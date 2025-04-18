@@ -1,0 +1,7 @@
+[workspace]
+resolver = "2"
+members = ["bril-fuzzer", "bril/bril-rs"]
+
+
+[workspace.dependencies]
+bril-rs = { path = "bril/bril-rs" }
