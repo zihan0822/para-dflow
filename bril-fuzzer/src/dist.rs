@@ -18,8 +18,56 @@ where
     }
 }
 
+pub mod stats {
+    use bril_rs::program::Type;
+    pub const ALL_TYPES: [Type; 2] = [Type::Int, Type::Bool];
+    pub mod func {
+        use super::*;
+        pub const NUM_ARGS: [usize; 4] = [0, 1, 2, 3];
+        pub const NUM_ARGS_W: [f64; 4] = [0.2, 0.4, 0.4, 0.2];
+        pub const ARGS_TY: [Type; 2] = ALL_TYPES;
+        pub const ARGS_TY_W: [f64; 2] = [0.8, 0.2];
+    }
+
+    pub mod instr {
+        use super::*;
+        pub const CONST_OR_ELSE_W: [f64; 2] = [0.4, 0.6];
+        pub const INSTR_TY: [Type; 2] = ALL_TYPES;
+        pub const INSTR_TY_W: [f64; 2] = [0.8, 0.2];
+    }
+}
+
 pub struct BrilDist;
-pub struct Prototype;
+
+pub struct Prototype {
+    pub name: String,
+    pub args: Vec<Argument>,
+    pub return_type: Option<Type>,
+}
+
+impl Distribution<Prototype> for BrilDist {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Prototype {
+        let num_args =
+            *sample_one_by_weights(&stats::func::NUM_ARGS, &stats::func::NUM_ARGS_W, rng);
+        let name = generate_random_ident(rng);
+        let args: Vec<_> = (0..num_args)
+            .map(|_| {
+                let arg_type =
+                    sample_one_by_weights(&stats::func::ARGS_TY, &stats::func::ARGS_TY_W, rng)
+                        .clone();
+                Argument {
+                    name: generate_random_ident(rng),
+                    arg_type,
+                }
+            })
+            .collect();
+        Prototype {
+            name,
+            args,
+            return_type: None,
+        }
+    }
+}
 
 #[derive(Default)]
 pub struct Context {
@@ -29,6 +77,21 @@ pub struct Context {
 }
 
 impl Context {
+    pub fn from_prototype(prototype: &Prototype) -> Self {
+        let mut local_vars: HashMap<_, Vec<String>> = HashMap::new();
+        for arg in &prototype.args {
+            local_vars
+                .entry(arg.arg_type.clone())
+                .or_default()
+                .push(arg.name.clone());
+        }
+        Self {
+            local_vars,
+            labels: vec![],
+            fns: vec![],
+        }
+    }
+
     /// sample with replacement
     pub fn sample_operands_of_ty<R: Rng + ?Sized>(
         &self,
@@ -58,6 +121,10 @@ impl Context {
                 vars.dedup()
             })
             .or_insert(vec![var]);
+    }
+
+    pub fn intersect(&mut self, other: Self) {
+        todo!()
     }
 }
 
@@ -154,7 +221,8 @@ impl Sample for BoolInst {
 }
 
 fn generate_random_ident<R: Rng + ?Sized>(rng: &mut R) -> String {
-    const MAX_IDENT_LEN: usize = 6;
+    const MAX_IDENT_LEN: usize = 8;
+    let mut len = rng.random_range(1..MAX_IDENT_LEN);
     let first_char = std::iter::once('_')
         .chain('a'..='z')
         .chain('A'..='Z')
@@ -162,9 +230,13 @@ fn generate_random_ident<R: Rng + ?Sized>(rng: &mut R) -> String {
         .choose(rng)
         .copied()
         .unwrap();
+
+    if first_char == '_' && len == 1 {
+        len += 1;
+    }
     let rest: String = rng
         .sample_iter(Alphanumeric)
-        .take(MAX_IDENT_LEN - 1)
+        .take(len)
         .map(char::from)
         .collect();
     format!("{first_char}{rest}")
