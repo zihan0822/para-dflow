@@ -1,4 +1,5 @@
 use bril_rs::program::*;
+pub use macros::Sample;
 use rand::seq::IndexedRandom;
 use rand::{
     Rng,
@@ -6,35 +7,9 @@ use rand::{
 };
 use std::collections::HashMap;
 
-pub trait Sample
-where
-    BrilDist: Distribution<Self>,
-    Self: Sized,
-{
-    type Context;
-    fn sample_with_ctx<R: Rng + ?Sized>(ctx: &Self::Context, rng: &mut R) -> Self;
-    fn sample<R: Rng + ?Sized>(rng: &mut R) -> Self {
-        rng.sample(BrilDist)
-    }
-}
-
-pub mod stats {
-    use bril_rs::program::Type;
-    pub const ALL_TYPES: [Type; 2] = [Type::Int, Type::Bool];
-    pub mod func {
-        use super::*;
-        pub const NUM_ARGS: [usize; 4] = [0, 1, 2, 3];
-        pub const NUM_ARGS_W: [f64; 4] = [0.2, 0.4, 0.4, 0.2];
-        pub const ARGS_TY: [Type; 2] = ALL_TYPES;
-        pub const ARGS_TY_W: [f64; 2] = [0.8, 0.2];
-    }
-
-    pub mod instr {
-        use super::*;
-        pub const CONST_OR_ELSE_W: [f64; 2] = [0.4, 0.6];
-        pub const INSTR_TY: [Type; 2] = ALL_TYPES;
-        pub const INSTR_TY_W: [f64; 2] = [0.8, 0.2];
-    }
+pub trait Sample: Sized {
+    fn sample_with_ctx<R: Rng + ?Sized>(ctx: &Context, rng: &mut R) -> Self;
+    fn sample<R: Rng + ?Sized>(rng: &mut R) -> Self;
 }
 
 pub struct BrilDist;
@@ -47,14 +22,12 @@ pub struct Prototype {
 
 impl Distribution<Prototype> for BrilDist {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Prototype {
-        let num_args =
-            *sample_one_by_weights(&stats::func::NUM_ARGS, &stats::func::NUM_ARGS_W, rng);
+        use crate::stats::func;
+        let num_args = *sample_one_by_weights(&func::NUM_ARGS, &func::NUM_ARGS_W, rng);
         let name = generate_random_ident(rng);
         let args: Vec<_> = (0..num_args)
             .map(|_| {
-                let arg_type =
-                    sample_one_by_weights(&stats::func::ARGS_TY, &stats::func::ARGS_TY_W, rng)
-                        .clone();
+                let arg_type = sample_one_by_weights(&func::ARGS_TY, &func::ARGS_TY_W, rng).clone();
                 Argument {
                     name: generate_random_ident(rng),
                     arg_type,
@@ -146,7 +119,6 @@ impl Distribution<ArithInst> for BrilDist {
 }
 
 impl Sample for ArithInst {
-    type Context = Context;
     fn sample_with_ctx<R: Rng + ?Sized>(ctx: &Context, rng: &mut R) -> Self {
         let op = *sample_one_by_weights(
             &[
@@ -174,6 +146,10 @@ impl Sample for ArithInst {
             <ArithInst as Sample>::sample(rng)
         }
     }
+
+    fn sample<R: Rng + ?Sized>(rng: &mut R) -> Self {
+        rng.sample(BrilDist)
+    }
 }
 
 impl Distribution<BoolInst> for BrilDist {
@@ -188,7 +164,6 @@ impl Distribution<BoolInst> for BrilDist {
 }
 
 impl Sample for BoolInst {
-    type Context = Context;
     fn sample_with_ctx<R: Rng + ?Sized>(ctx: &Context, rng: &mut R) -> Self {
         let op = *sample_one_by_weights(
             &[
@@ -217,6 +192,9 @@ impl Sample for BoolInst {
         } else {
             <Self as Sample>::sample(rng)
         }
+    }
+    fn sample<R: Rng + ?Sized>(rng: &mut R) -> Self {
+        rng.sample(BrilDist)
     }
 }
 

@@ -30,11 +30,22 @@ fn generate_fn(num_instrs: usize, prototype: Prototype) -> Function {
 
 fn generate_code_blk(num_instrs: usize, mut ctx: Context) -> Vec<Code> {
     let mut instrs = vec![];
+    #[derive(Sample)]
+    enum BoolOrArith {
+        #[w = 0.2]
+        Bool(BoolInst),
+        #[w = 0.8]
+        Arith(ArithInst),
+    }
+
     for _ in 0..num_instrs {
-        let next = RNG.with_borrow_mut(|rng| ArithInst::sample_with_ctx(&ctx, rng));
-        let (dest, op_type) = parse_dest_and_ty(&next.0);
+        let next = match RNG.with_borrow_mut(|rng| BoolOrArith::sample_with_ctx(&ctx, rng)) {
+            BoolOrArith::Bool(bool_instr) => bool_instr.0,
+            BoolOrArith::Arith(arith_instr) => arith_instr.0,
+        };
+        let (dest, op_type) = parse_dest_and_ty(&next);
         ctx.insert_new_local_var(dest, op_type);
-        instrs.push(Code::Instruction(next.0));
+        instrs.push(Code::Instruction(next));
     }
     instrs
 }
