@@ -198,6 +198,11 @@ impl Sample for BoolInst {
     }
 }
 
+#[inline]
+pub fn generate_random_label<R: Rng + ?Sized>(rng: &mut R) -> String {
+    format!(".{}", generate_random_ident(rng))
+}
+
 fn generate_random_ident<R: Rng + ?Sized>(rng: &mut R) -> String {
     const MAX_IDENT_LEN: usize = 8;
     let mut len = rng.random_range(1..MAX_IDENT_LEN);
