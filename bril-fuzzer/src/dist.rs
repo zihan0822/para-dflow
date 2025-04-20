@@ -45,8 +45,7 @@ impl Distribution<Prototype> for BrilDist {
 #[derive(Default)]
 pub struct Context {
     pub local_vars: HashMap<Type, Vec<String>>,
-    labels: Vec<String>,
-    fns: Vec<Prototype>,
+    _fns: Vec<Prototype>,
 }
 
 impl Context {
@@ -60,8 +59,7 @@ impl Context {
         }
         Self {
             local_vars,
-            labels: vec![],
-            fns: vec![],
+            _fns: vec![],
         }
     }
 
@@ -198,12 +196,7 @@ impl Sample for BoolInst {
     }
 }
 
-#[inline]
-pub fn generate_random_label<R: Rng + ?Sized>(rng: &mut R) -> String {
-    format!(".{}", generate_random_ident(rng))
-}
-
-fn generate_random_ident<R: Rng + ?Sized>(rng: &mut R) -> String {
+pub fn generate_random_ident<R: Rng + ?Sized>(rng: &mut R) -> String {
     const MAX_IDENT_LEN: usize = 8;
     let mut len = rng.random_range(1..MAX_IDENT_LEN);
     let first_char = std::iter::once('_')
@@ -226,7 +219,7 @@ fn generate_random_ident<R: Rng + ?Sized>(rng: &mut R) -> String {
 }
 
 /// sample one element from input slice according to a weight vector
-fn sample_one_by_weights<'a, T, R: Rng + ?Sized>(
+pub fn sample_one_by_weights<'a, T, R: Rng + ?Sized>(
     s: &'a [T],
     weights: &[f64],
     rng: &mut R,
