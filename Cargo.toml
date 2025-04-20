@@ -1,7 +1,6 @@
 [workspace]
-resolver = "2"
-members = ["bril-fuzzer", "bril/bril-rs"]
-
+resolver = "3"
+members = ["bril", "bril-fuzzer"]
 
 [workspace.dependencies]
-bril-rs = { path = "bril/bril-rs" }
+bril-rs = { git = "https://github.com/sampsyo/bril", rev = "175580e" }

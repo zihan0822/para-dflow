@@ -1,9 +1,9 @@
 use bril_rs::program::*;
 pub use macros::Sample;
-use rand::seq::IndexedRandom;
 use rand::{
     Rng,
     distr::{self, Alphanumeric, Distribution},
+    seq::IndexedRandom,
 };
 use std::collections::HashMap;
 
@@ -24,11 +24,17 @@ pub struct Prototype {
 impl Distribution<Prototype> for BrilDist {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Prototype {
         use crate::stats::func;
-        let num_args = *sample_one_by_weights(&func::NUM_ARGS, &func::NUM_ARGS_W, rng);
+        let num_args =
+            *sample_one_by_weights(&func::NUM_ARGS, &func::NUM_ARGS_W, rng);
         let name = generate_random_ident(rng);
         let args: Vec<_> = (0..num_args)
             .map(|_| {
-                let arg_type = sample_one_by_weights(&func::ARGS_TY, &func::ARGS_TY_W, rng).clone();
+                let arg_type = sample_one_by_weights(
+                    &func::ARGS_TY,
+                    &func::ARGS_TY_W,
+                    rng,
+                )
+                .clone();
                 Argument {
                     name: generate_random_ident(rng),
                     arg_type,
@@ -98,8 +104,11 @@ impl Context {
     pub fn intersection(&self, other: Self) -> Self {
         let mut ret = self.clone();
         for (ty, local_vars) in &mut ret.local_vars {
-            let other_vars = other.local_vars.get(ty).cloned().unwrap_or_default();
-            local_vars.retain(|this_var| other_vars.iter().any(|other_var| other_var.eq(this_var)));
+            let other_vars =
+                other.local_vars.get(ty).cloned().unwrap_or_default();
+            local_vars.retain(|this_var| {
+                other_vars.iter().any(|other_var| other_var.eq(this_var))
+            });
         }
         ret
     }
@@ -136,7 +145,8 @@ impl Sample for ArithInst {
             rng,
         );
         let num_args = if matches!(op, ValueOps::Id) { 1 } else { 2 };
-        if let Some(args) = ctx.sample_operands_of_ty(Type::Int, num_args, rng) {
+        if let Some(args) = ctx.sample_operands_of_ty(Type::Int, num_args, rng)
+        {
             ArithInst(Instruction::Value {
                 args,
                 dest: generate_random_ident(rng),
@@ -184,7 +194,8 @@ impl Sample for BoolInst {
             rng,
         );
         let num_args = if matches!(op, ValueOps::Not) { 1 } else { 2 };
-        if let Some(args) = ctx.sample_operands_of_ty(Type::Bool, num_args, rng) {
+        if let Some(args) = ctx.sample_operands_of_ty(Type::Bool, num_args, rng)
+        {
             BoolInst(Instruction::Value {
                 args,
                 dest: generate_random_ident(rng),

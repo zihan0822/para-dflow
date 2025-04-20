@@ -1,12 +1,14 @@
 use crate::dist::*;
 use bril_rs::program::*;
-use petgraph::graph::{DiGraph, NodeIndex};
-use petgraph::visit::{Dfs, DfsPostOrder};
-use rand::Rng;
-use rand::distr::Open01;
-use rand::prelude::*;
-use std::cell::RefCell;
-use std::collections::{HashMap, HashSet, VecDeque};
+use petgraph::{
+    graph::{DiGraph, NodeIndex},
+    visit::{Dfs, DfsPostOrder},
+};
+use rand::{Rng, distr::Open01, prelude::*};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet, VecDeque},
+};
 
 thread_local! {
     static RNG: RefCell<rand::rngs::ThreadRng> = RefCell::new(rand::rng());
@@ -39,7 +41,11 @@ enum BlkExit<'a> {
     Branch(&'a str, &'a str),
 }
 
-fn generate_fn<R: Rng + ?Sized>(num_instrs: usize, prototype: Prototype, rng: &mut R) -> Function {
+fn generate_fn<R: Rng + ?Sized>(
+    num_instrs: usize,
+    prototype: Prototype,
+    rng: &mut R,
+) -> Function {
     let num_nodes = 4;
     let (cfg, entry) = generate_reducible_cfg(num_nodes, rng);
     let labels: Vec<_> = (0..num_nodes)
@@ -76,7 +82,10 @@ fn generate_fn<R: Rng + ?Sized>(num_instrs: usize, prototype: Prototype, rng: &m
                     BlkExit::Jump(&labels[cfg[neighbors[0]]])
                 }
             }
-            2 => BlkExit::Branch(&labels[cfg[neighbors[0]]], &labels[cfg[neighbors[1]]]),
+            2 => BlkExit::Branch(
+                &labels[cfg[neighbors[0]]],
+                &labels[cfg[neighbors[1]]],
+            ),
             _ => unreachable!("invalid out-degree: {}", neighbors.len()),
         };
         instrs.extend(generate_code_blk(
@@ -127,25 +136,31 @@ fn generate_code_blk<R: Rng + ?Sized>(
     }
     match exit {
         BlkExit::Fallthrough | BlkExit::Return => {}
-        BlkExit::Jump(b) => instrs.push(Code::Instruction(Instruction::Effect {
-            labels: vec![b.to_string()],
-            funcs: vec![],
-            args: vec![],
-            op: EffectOps::Jump,
-        })),
-        BlkExit::Branch(b1, b2) => instrs.push(Code::Instruction(Instruction::Effect {
-            labels: vec![b1.to_string(), b2.to_string()],
-            funcs: vec![],
-            args: vec![],
-            op: EffectOps::Branch,
-        })),
+        BlkExit::Jump(b) => {
+            instrs.push(Code::Instruction(Instruction::Effect {
+                labels: vec![b.to_string()],
+                funcs: vec![],
+                args: vec![],
+                op: EffectOps::Jump,
+            }))
+        }
+        BlkExit::Branch(b1, b2) => {
+            instrs.push(Code::Instruction(Instruction::Effect {
+                labels: vec![b1.to_string(), b2.to_string()],
+                funcs: vec![],
+                args: vec![],
+                op: EffectOps::Branch,
+            }))
+        }
     }
     instrs
 }
 
 fn parse_dest_and_ty(instr: &Instruction) -> (String, Type) {
     match instr {
-        Instruction::Value { dest, op_type, .. } => (dest.clone(), op_type.clone()),
+        Instruction::Value { dest, op_type, .. } => {
+            (dest.clone(), op_type.clone())
+        }
         Instruction::Constant {
             dest, const_type, ..
         } => (dest.clone(), const_type.clone()),
@@ -188,7 +203,8 @@ fn add_random_cross_and_forward_edges<R: Rng + ?Sized>(
 
     for node in cfg.node_indices() {
         let out_degree = cfg.neighbors(node).count();
-        let Some(num_to_keep) = (1..=out_degree.min(MAX_FAN_OUT)).choose(rng) else {
+        let Some(num_to_keep) = (1..=out_degree.min(MAX_FAN_OUT)).choose(rng)
+        else {
             continue;
         };
         let to_remove = cfg
@@ -215,9 +231,13 @@ fn add_random_back_edges<R: Rng + ?Sized>(
     for node in cfg.node_indices() {
         let out_degree = cfg.neighbors(node).count();
         // we don't add extra backedge to potential exit node
-        if out_degree < MAX_FAN_OUT && out_degree > 0 && rng.sample::<f32, Open01>(Open01) > 0.3 {
+        if out_degree < MAX_FAN_OUT
+            && out_degree > 0
+            && rng.sample::<f32, Open01>(Open01) > 0.3
+        {
             let num_added = (1..=MAX_FAN_OUT - out_degree).choose(rng).unwrap();
-            let flattened_dom = Vec::from_iter(dominators.get(&node).cloned().unwrap());
+            let flattened_dom =
+                Vec::from_iter(dominators.get(&node).cloned().unwrap());
             // prefer longer back edge
             let backedge_to = flattened_dom
                 .choose_multiple_weighted(rng, num_added, |dom| {
@@ -232,7 +252,8 @@ fn add_random_back_edges<R: Rng + ?Sized>(
 }
 
 fn siblings(tree: &DiGraph<usize, ()>, node: NodeIndex) -> Vec<NodeIndex> {
-    let mut parent = tree.neighbors_directed(node, petgraph::Direction::Incoming);
+    let mut parent =
+        tree.neighbors_directed(node, petgraph::Direction::Incoming);
     assert!(parent.clone().count() <= 1);
     parent
         .next()
@@ -276,11 +297,15 @@ pub fn generate_random_tree<R: Rng + ?Sized>(
             }
             let (mut start, end) = (inorder_range.start, inorder_range.end);
             let num_nodes = end - start;
-            let num_subtree = self.rng.random_range(1..=self.max_fan_out.min(num_nodes));
+            let num_subtree =
+                self.rng.random_range(1..=self.max_fan_out.min(num_nodes));
 
             let subtree_size_split: Vec<usize> = {
                 let mut interval: Vec<usize> = std::iter::once(0)
-                    .chain((1..=num_nodes - 1).choose_multiple(self.rng, num_subtree - 1))
+                    .chain(
+                        (1..=num_nodes - 1)
+                            .choose_multiple(self.rng, num_subtree - 1),
+                    )
                     .chain(std::iter::once(num_nodes))
                     .collect();
                 interval.sort();
@@ -346,7 +371,9 @@ fn get_dominators(
             let mut dominator = graph
                 .neighbors_directed(item, petgraph::Direction::Incoming)
                 .map(|parent| ret.get(&parent).cloned().unwrap())
-                .reduce(|dom1, dom2| dom1.intersection(&dom2).copied().collect())
+                .reduce(|dom1, dom2| {
+                    dom1.intersection(&dom2).copied().collect()
+                })
                 .unwrap();
             dominator.insert(item);
             dominator

@@ -1,8 +1,9 @@
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
-use syn::{DeriveInput, parse_quote};
-use syn::{Expr, Ident, Token, Type, punctuated::Punctuated};
+use syn::{
+    DeriveInput, Expr, Ident, Token, Type, parse_quote, punctuated::Punctuated,
+};
 
 /// Allow variants of enum to be sampled by specified weights
 ///
@@ -61,7 +62,11 @@ fn expand_sample_derive(input: TokenStream) -> syn::Result<TokenStream2> {
                 variant.ident.span(),
                 "weight to sample this variant should be specified with #[w = value] tag",
             ))?;
-        let ty = if let syn::Fields::Unnamed(syn::FieldsUnnamed { unnamed, .. }) = &variant.fields {
+        let ty = if let syn::Fields::Unnamed(syn::FieldsUnnamed {
+            unnamed,
+            ..
+        }) = &variant.fields
+        {
             &unnamed.iter().next().unwrap().ty
         } else {
             // checked by expand variant trait bound
@@ -74,11 +79,12 @@ fn expand_sample_derive(input: TokenStream) -> syn::Result<TokenStream2> {
         });
     }
     let sample_trait_path = quote! {crate::dist::Sample};
-    let sample_with_ctx_body = variant_sampler(&item_ident, &candidates, |ty| {
-        parse_quote! {
-            <#ty as #sample_trait_path>::sample_with_ctx(ctx, rng)
-        }
-    });
+    let sample_with_ctx_body =
+        variant_sampler(&item_ident, &candidates, |ty| {
+            parse_quote! {
+                <#ty as #sample_trait_path>::sample_with_ctx(ctx, rng)
+            }
+        });
     let sample_body = variant_sampler(
         &item_ident,
         &candidates,
@@ -98,7 +104,11 @@ fn expand_sample_derive(input: TokenStream) -> syn::Result<TokenStream2> {
     })
 }
 
-fn variant_sampler<F>(enum_ident: &Ident, candidates: &[Candidate<'_>], action: F) -> TokenStream2
+fn variant_sampler<F>(
+    enum_ident: &Ident,
+    candidates: &[Candidate<'_>],
+    action: F,
+) -> TokenStream2
 where
     F: Fn(&Type) -> Expr,
 {
@@ -130,7 +140,9 @@ fn expand_variant_trait_bound(
     let mut predicates = Punctuated::new();
     for variant in variants.iter() {
         match &variant.fields {
-            syn::Fields::Unnamed(syn::FieldsUnnamed { unnamed, .. }) if unnamed.len() == 1 => {
+            syn::Fields::Unnamed(syn::FieldsUnnamed { unnamed, .. })
+                if unnamed.len() == 1 =>
+            {
                 let ty = &unnamed.iter().next().unwrap().ty;
                 predicates.push(parse_quote! {
                     #ty: crate::dist::Sample
