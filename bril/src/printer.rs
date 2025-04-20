@@ -1,6 +1,6 @@
 use std::{fmt, ops::Range};
 
-use crate::ir::{Program, StringIdx};
+use crate::ir::{Function, LabelIdx, Program, StringIdx};
 
 pub struct Printer<'formatter, W: fmt::Write> {
     f: &'formatter mut W,
@@ -21,9 +21,14 @@ impl<'formatter, W: fmt::Write> Printer<'formatter, W> {
     pub fn print_function(
         &mut self,
         program: &Program,
-        function: (StringIdx, Range<usize>),
+        function: Function,
     ) -> fmt::Result {
-        writeln!(self.f, "@{} {{", program.get_string(function.0))?;
+        writeln!(self.f, "@{} {{", program.get_string(function.name))?;
+        for (index, instruction) in program.instructions
+            [function.instruction_range]
+            .iter()
+            .enumerate()
+        {}
         write!(self.f, "}}")
     }
 }

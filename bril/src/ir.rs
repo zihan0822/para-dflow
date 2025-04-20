@@ -39,25 +39,43 @@ pub enum Instruction {
 }
 
 #[derive(Debug, Default, PartialEq, Eq, Clone)]
+struct FunctionInternal {
+    start: usize,
+    name: StringIdx,
+    parameters: Vec<Variable>,
+}
+
+pub struct Function<'a> {
+    /// The subarray of instructions corresponding to this function.
+    pub instruction_range: Range<usize>,
+    pub name: StringIdx,
+    pub parameters: &'a [Variable],
+}
+
+#[derive(Debug, Default, PartialEq, Eq, Clone)]
 pub struct Program {
     pub instructions: Vec<Instruction>,
     strings: Vec<String>,
     labels: Vec<(usize, StringIdx)>,
-    functions: Vec<(usize, StringIdx)>,
+    functions: Vec<FunctionInternal>,
 }
 
 impl Program {
-    pub fn functions(&self) -> impl Iterator<Item = (StringIdx, Range<usize>)> {
+    pub fn functions(&self) -> impl Iterator<Item = Function> {
         let ends = self
             .functions
             .iter()
             .skip(1)
-            .map(|(start, _)| *start)
+            .map(|function| function.start)
             .chain(iter::once(self.functions.len()));
         self.functions
             .iter()
             .zip(ends)
-            .map(|(lhs_idx, rhs_idx)| (lhs_idx.1, lhs_idx.0..rhs_idx))
+            .map(|(function, end)| Function {
+                instruction_range: function.start..end,
+                name: function.name,
+                parameters: &function.parameters,
+            })
     }
 
     pub fn add_label(&mut self, string: impl Into<String>) -> LabelIdx {
