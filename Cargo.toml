@@ -2,5 +2,10 @@
 resolver = "3"
 members = ["bril", "bril-fuzzer"]
 
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+
 [workspace.dependencies]
 bril-rs = { git = "https://github.com/sampsyo/bril", rev = "175580e" }
+slotmap = "1.0.7"

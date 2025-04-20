@@ -1,0 +1,7 @@
+[package]
+name = "bril"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+slotmap.workspace = true
