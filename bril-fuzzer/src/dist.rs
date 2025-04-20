@@ -14,6 +14,7 @@ pub trait Sample: Sized {
 
 pub struct BrilDist;
 
+#[derive(Debug, Clone)]
 pub struct Prototype {
     pub name: String,
     pub args: Vec<Argument>,
@@ -42,7 +43,7 @@ impl Distribution<Prototype> for BrilDist {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Context {
     pub local_vars: HashMap<Type, Vec<String>>,
     _fns: Vec<Prototype>,
@@ -94,8 +95,13 @@ impl Context {
             .or_insert(vec![var]);
     }
 
-    pub fn intersect(&mut self, other: Self) {
-        todo!()
+    pub fn intersection(&self, other: Self) -> Self {
+        let mut ret = self.clone();
+        for (ty, local_vars) in &mut ret.local_vars {
+            let other_vars = other.local_vars.get(ty).cloned().unwrap_or_default();
+            local_vars.retain(|this_var| other_vars.iter().any(|other_var| other_var.eq(this_var)));
+        }
+        ret
     }
 }
 

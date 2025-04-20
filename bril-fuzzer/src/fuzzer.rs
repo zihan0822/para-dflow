@@ -19,10 +19,6 @@ pub struct Tree {
     pub inner: TreeInner,
 }
 
-pub fn cfg_gen() -> DiGraph<usize, ()> {
-    RNG.with_borrow_mut(|rng| generate_reducible_cfg(8, rng).0)
-}
-
 pub fn generate_bril_program(num_fns: usize) -> Program {
     Program {
         functions: (0..num_fns)
@@ -44,15 +40,32 @@ enum BlkExit<'a> {
 }
 
 fn generate_fn<R: Rng + ?Sized>(num_instrs: usize, prototype: Prototype, rng: &mut R) -> Function {
-    let num_nodes = 8;
+    let num_nodes = 4;
     let (cfg, entry) = generate_reducible_cfg(num_nodes, rng);
     let labels: Vec<_> = (0..num_nodes)
         .map(|_| crate::dist::generate_random_ident(rng))
         .collect();
     let mut instrs = vec![];
     let mut visit = Dfs::new(&cfg, entry);
-    let mut ctx = Context::from_prototype(&prototype);
+
+    let dominators = get_dominators(&cfg, entry);
+    let mut ctx_at_exit: HashMap<NodeIndex, Context> = HashMap::new();
+
     while let Some(next) = visit.next(&cfg) {
+        let mut ctx = dominators
+            .get(&next)
+            .unwrap()
+            .iter()
+            .filter_map(|dom| {
+                if *dom != next {
+                    Some(ctx_at_exit.get(dom).unwrap().clone())
+                } else {
+                    None
+                }
+            })
+            .reduce(|c1, c2| c1.intersection(c2))
+            .unwrap_or(Context::from_prototype(&prototype));
+
         let neighbors: Vec<_> = cfg.neighbors(next).collect();
         let exit = match neighbors.len() {
             0 => BlkExit::Return,
@@ -68,11 +81,12 @@ fn generate_fn<R: Rng + ?Sized>(num_instrs: usize, prototype: Prototype, rng: &m
         };
         instrs.extend(generate_code_blk(
             num_instrs,
-            Context::from_prototype(&prototype),
+            &mut ctx,
             &labels[cfg[next]],
             exit,
             rng,
         ));
+        ctx_at_exit.insert(next, ctx);
     }
 
     Function {
@@ -85,7 +99,7 @@ fn generate_fn<R: Rng + ?Sized>(num_instrs: usize, prototype: Prototype, rng: &m
 
 fn generate_code_blk<R: Rng + ?Sized>(
     num_instrs: usize,
-    mut ctx: Context,
+    ctx: &mut Context,
     label: &str,
     exit: BlkExit<'_>,
     rng: &mut R,
@@ -103,7 +117,7 @@ fn generate_code_blk<R: Rng + ?Sized>(
     }
 
     for _ in 0..num_instrs {
-        let next = match BoolOrArith::sample_with_ctx(&ctx, rng) {
+        let next = match BoolOrArith::sample_with_ctx(ctx, rng) {
             BoolOrArith::Bool(bool_instr) => bool_instr.0,
             BoolOrArith::Arith(arith_instr) => arith_instr.0,
         };
@@ -207,7 +221,7 @@ fn add_random_back_edges<R: Rng + ?Sized>(
             // prefer longer back edge
             let backedge_to = flattened_dom
                 .choose_multiple_weighted(rng, num_added, |dom| {
-                    1.0 / (dominators.get(&dom).unwrap().len() as f64 + 1.0)
+                    1.0 / (dominators.get(dom).unwrap().len() as f64 + 1.0)
                 })
                 .unwrap();
             for nx in backedge_to {
@@ -264,7 +278,7 @@ pub fn generate_random_tree<R: Rng + ?Sized>(
             let num_nodes = end - start;
             let num_subtree = self.rng.random_range(1..=self.max_fan_out.min(num_nodes));
 
-            let mut subtree_size_split: Vec<usize> = {
+            let subtree_size_split: Vec<usize> = {
                 let mut interval: Vec<usize> = std::iter::once(0)
                     .chain((1..=num_nodes - 1).choose_multiple(self.rng, num_subtree - 1))
                     .chain(std::iter::once(num_nodes))
@@ -326,14 +340,17 @@ fn get_dominators(
     let mut worklist = VecDeque::from_iter(graph.node_indices());
     while !worklist.is_empty() {
         let item = worklist.pop_front().unwrap();
-        let Some(mut dominator) = graph
-            .neighbors_directed(item, petgraph::Direction::Incoming)
-            .map(|parent| ret.get(&parent).cloned().unwrap())
-            .reduce(|dom1, dom2| dom1.intersection(&dom2).copied().collect())
-        else {
-            continue;
+        let dominator = if item == entry {
+            HashSet::from_iter([entry])
+        } else {
+            let mut dominator = graph
+                .neighbors_directed(item, petgraph::Direction::Incoming)
+                .map(|parent| ret.get(&parent).cloned().unwrap())
+                .reduce(|dom1, dom2| dom1.intersection(&dom2).copied().collect())
+                .unwrap();
+            dominator.insert(item);
+            dominator
         };
-        dominator.insert(item);
         if !dominator.eq(ret.get(&item).unwrap()) {
             worklist.extend(graph.neighbors(item));
             ret.insert(item, dominator);
