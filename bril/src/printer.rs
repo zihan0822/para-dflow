@@ -13,22 +13,14 @@ impl<'formatter, W: fmt::Write> Printer<'formatter, W> {
 
     pub fn print_program(&mut self, program: &Program) -> fmt::Result {
         for function in program.functions() {
-            self.print_function(program, function)?;
+            self.print_function(function)?;
         }
         Ok(())
     }
 
-    pub fn print_function(
-        &mut self,
-        program: &Program,
-        function: Function,
-    ) -> fmt::Result {
-        writeln!(self.f, "@{} {{", program.get_string(function.name))?;
-        for (index, instruction) in program.instructions
-            [function.instruction_range]
-            .iter()
-            .enumerate()
-        {}
+    pub fn print_function(&mut self, function: Function) -> fmt::Result {
+        writeln!(self.f, "@{} {{", function.name)?;
+        for (index, instruction) in function.instructions.iter().enumerate() {}
         write!(self.f, "}}")
     }
 }

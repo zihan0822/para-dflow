@@ -1,6 +1,4 @@
-use std::{iter, ops::Range};
-
-pub type StringIdx = u32;
+use std::ops::Range;
 
 pub const NO_INDEX: u32 = u32::MAX;
 
@@ -10,6 +8,8 @@ pub struct Variable(pub u32);
 pub struct LabelIdx(pub u32);
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 pub struct FunctionIdx(pub u32);
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+pub struct StringIdx(pub u32);
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Instruction {
@@ -38,55 +38,63 @@ pub enum Instruction {
     Nop,
 }
 
-#[derive(Debug, Default, PartialEq, Eq, Clone)]
-struct FunctionInternal {
-    start: usize,
-    name: StringIdx,
-    parameters: Vec<Variable>,
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub(crate) struct FunctionInternal {
+    pub(crate) range: Range<usize>,
+    pub(crate) name: StringIdx,
+    pub(crate) parameters: Vec<Variable>,
 }
 
 pub struct Function<'a> {
     /// The subarray of instructions corresponding to this function.
-    pub instruction_range: Range<usize>,
-    pub name: StringIdx,
+    pub instructions: &'a [Instruction],
+    pub name: &'a str,
     pub parameters: &'a [Variable],
 }
 
 #[derive(Debug, Default, PartialEq, Eq, Clone)]
 pub struct Program {
     pub instructions: Vec<Instruction>,
+    functions: Vec<FunctionInternal>,
     strings: Vec<String>,
     labels: Vec<(usize, StringIdx)>,
-    functions: Vec<FunctionInternal>,
 }
 
 impl Program {
     pub fn functions(&self) -> impl Iterator<Item = Function> {
-        let ends = self
-            .functions
-            .iter()
-            .skip(1)
-            .map(|function| function.start)
-            .chain(iter::once(self.functions.len()));
-        self.functions
-            .iter()
-            .zip(ends)
-            .map(|(function, end)| Function {
-                instruction_range: function.start..end,
-                name: function.name,
-                parameters: &function.parameters,
-            })
+        self.functions.iter().map(|function| Function {
+            instructions: &self.instructions[function.range.clone()],
+            name: self.get_string(function.name),
+            parameters: &function.parameters,
+        })
     }
 
     pub fn add_label(&mut self, string: impl Into<String>) -> LabelIdx {
         self.strings.push(string.into());
-        let string_idx = (self.strings.len() - 1) as StringIdx;
+        let string_idx = StringIdx((self.strings.len() - 1) as u32);
         let current_position = self.instructions.len();
         self.labels.push((current_position, string_idx));
         LabelIdx((self.labels.len() - 1) as u32)
     }
 
+    pub fn get_label_offset(&self, idx: LabelIdx) -> usize {
+        self.labels[idx.0 as usize].0
+    }
+
+    pub fn add_string(&mut self, string: impl Into<String>) -> StringIdx {
+        self.strings.push(string.into());
+        StringIdx((self.strings.len() - 1) as u32)
+    }
+
     pub fn get_string(&self, idx: StringIdx) -> &str {
-        &self.strings[idx as usize]
+        &self.strings[idx.0 as usize]
+    }
+
+    pub(crate) fn add_function(
+        &mut self,
+        function: FunctionInternal,
+    ) -> FunctionIdx {
+        self.functions.push(function);
+        FunctionIdx((self.functions.len() - 1) as u32)
     }
 }
