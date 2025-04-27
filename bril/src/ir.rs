@@ -12,28 +12,35 @@ pub struct FunctionIdx(pub u32);
 pub struct StringIdx(pub u32);
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub enum Value {
+    Bool(bool),
+    Int(i64),
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Instruction {
-    Add(Variable, Variable),
-    Mul(Variable, Variable),
-    Sub(Variable, Variable),
-    Div(Variable, Variable),
+    Add(Variable, Variable, Variable),
+    Mul(Variable, Variable, Variable),
+    Sub(Variable, Variable, Variable),
+    Div(Variable, Variable, Variable),
 
-    Eq(Variable, Variable),
-    Lt(Variable, Variable),
-    Gt(Variable, Variable),
-    Le(Variable, Variable),
-    Ge(Variable, Variable),
+    Eq(Variable, Variable, Variable),
+    Lt(Variable, Variable, Variable),
+    Gt(Variable, Variable, Variable),
+    Le(Variable, Variable, Variable),
+    Ge(Variable, Variable, Variable),
 
-    Not(Variable),
-    And(Variable, Variable),
-    Or(Variable, Variable),
+    Not(Variable, Variable),
+    And(Variable, Variable, Variable),
+    Or(Variable, Variable, Variable),
 
     Jmp(LabelIdx),
     Br(Variable, LabelIdx, LabelIdx),
     Call(FunctionIdx, Box<[Variable]>),
     Ret(Option<Variable>),
 
-    Id(Variable),
+    Const(Variable, Value),
+    Id(Variable, Variable),
     Print(Box<[Variable]>),
     Nop,
 }
