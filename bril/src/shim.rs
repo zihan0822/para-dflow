@@ -47,6 +47,9 @@ fn basic_block_split(
 
 fn build_fn(fn_builder: &mut FunctionBuilder<'_>, input: &bril_rs::Function) {
     let mut instr_builder = InstrBuilder::with_args(&input.args);
+    fn_builder.parameters(
+        &instr_builder.var_map.values().copied().collect::<Vec<_>>(),
+    );
 
     for instrs in basic_block_split(&input.instrs) {
         let mut block_builder = BasicBlockBuilder::new();
@@ -93,7 +96,11 @@ impl<'a> InstrBuilder<'a> {
         let var_map: HashMap<&str, ir::Variable> = args
             .iter()
             .map(|arg| {
-                let arg_map = (arg.name.as_str(), ir::Variable(next_var));
+                let ty = match arg.arg_type {
+                    bril_rs::Type::Int => ir::Type::Int,
+                    bril_rs::Type::Bool => ir::Type::Bool,
+                };
+                let arg_map = (arg.name.as_str(), ir::Variable(next_var, ty));
                 next_var += 1;
                 arg_map
             })
@@ -108,11 +115,15 @@ impl<'a> InstrBuilder<'a> {
                 dest,
                 op,
                 funcs,
+                op_type,
                 ..
             } => {
-                let args: Vec<_> =
-                    args.iter().map(|arg| self.variable_or_next(arg)).collect();
-                let dest = self.variable_or_next(dest.as_str());
+                let args: Vec<_> = args
+                    .iter()
+                    .map(|arg| self.var_map.get(arg.as_str()).copied().unwrap())
+                    .collect();
+                let dest =
+                    self.variable_or_next(dest.as_str(), op_type.clone());
                 let translated = match op {
                     bril_rs::ValueOps::Add => {
                         ir::Instruction::Add(dest, args[0], args[1])
@@ -165,9 +176,14 @@ impl<'a> InstrBuilder<'a> {
                 Translated::Ok(translated)
             }
             bril_rs::Instruction::Constant {
-                dest, op, value, ..
+                dest,
+                op,
+                value,
+                const_type,
+                ..
             } => {
-                let dest = self.variable_or_next(dest.as_str());
+                let dest =
+                    self.variable_or_next(dest.as_str(), const_type.clone());
                 let value = match value {
                     bril_rs::Literal::Int(val) => ir::Value::Int(*val),
                     bril_rs::Literal::Bool(val) => ir::Value::Bool(*val),
@@ -184,8 +200,10 @@ impl<'a> InstrBuilder<'a> {
                 funcs,
                 op,
             } => {
-                let args: Vec<_> =
-                    args.iter().map(|arg| self.variable_or_next(arg)).collect();
+                let args: Vec<_> = args
+                    .iter()
+                    .map(|arg| self.var_map.get(arg.as_str()).copied().unwrap())
+                    .collect();
                 let unresolved = ir::LabelIdx(u32::MAX);
                 match op {
                     bril_rs::EffectOps::Jump => Translated::ToResolve(
@@ -216,11 +234,23 @@ impl<'a> InstrBuilder<'a> {
         }
     }
 
-    fn variable_or_next(&mut self, lit: &'a str) -> ir::Variable {
-        *self.var_map.entry(lit).or_insert_with(|| {
-            let next_var = ir::Variable(self.next_var);
-            self.next_var += 1;
-            next_var
-        })
+    fn variable_or_next(
+        &mut self,
+        lit: &'a str,
+        ty: bril_rs::Type,
+    ) -> ir::Variable {
+        let ir_ty = match ty {
+            bril_rs::Type::Int => ir::Type::Int,
+            bril_rs::Type::Bool => ir::Type::Bool,
+        };
+        if let Some(variable) = self.var_map.get(lit) {
+            if variable.1 == ir_ty {
+                return *variable;
+            }
+        }
+        let next_var = ir::Variable(self.next_var, ir_ty);
+        self.next_var += 1;
+        self.var_map.insert(lit, next_var);
+        next_var
     }
 }

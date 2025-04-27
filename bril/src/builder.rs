@@ -1,7 +1,7 @@
 use slotmap::{SecondaryMap, SlotMap, new_key_type};
 use std::ops::Range;
 
-use crate::ir::{FunctionInternal, Instruction, LabelIdx, Program};
+use crate::ir::{FunctionInternal, Instruction, LabelIdx, Program, Variable};
 
 enum PatchType {
     Label(Vec<String>),
@@ -31,6 +31,7 @@ impl ProgramBuilder {
             block_name_id: 0,
             program_builder: self,
             patches: vec![],
+            parameters: vec![],
         }
     }
 
@@ -63,9 +64,14 @@ pub struct FunctionBuilder<'program> {
     block_names: SecondaryMap<BasicBlockIdx, LabelIdx>,
     program_builder: &'program mut ProgramBuilder,
     patches: Vec<Patch>,
+    parameters: Vec<Variable>,
 }
 
 impl<'program> FunctionBuilder<'program> {
+    pub fn parameters(&mut self, parameters: &[Variable]) {
+        self.parameters.extend_from_slice(parameters)
+    }
+
     pub fn block_mut(&mut self, idx: BasicBlockIdx) -> &mut [Instruction] {
         &mut self.program_builder.program.instructions[self.blocks[idx].clone()]
     }

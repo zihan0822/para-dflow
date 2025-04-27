@@ -1,9 +1,8 @@
 use std::ops::Range;
 
 pub const NO_INDEX: u32 = u32::MAX;
-
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
-pub struct Variable(pub u32);
+pub struct Variable(pub u32, pub Type);
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 pub struct LabelIdx(pub u32);
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
@@ -15,6 +14,12 @@ pub struct StringIdx(pub u32);
 pub enum Value {
     Bool(bool),
     Int(i64),
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+pub enum Type {
+    Int,
+    Bool,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
