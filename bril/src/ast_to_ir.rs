@@ -2,14 +2,13 @@ use slotmap::SlotMap;
 
 use crate::{
     ast::{Ast, AstIdx},
-    builder::{BasicBlockBuilder, FunctionBuilder},
+    builder::{BasicBlockBuilder, FunctionBuilder, ProgramBuilder},
     ir::{Instruction, LabelIdx, Program},
 };
 
 pub fn ast_to_ir(ast: &SlotMap<AstIdx, Ast>, ast_root: AstIdx) -> Program {
-    let mut program = Program::default();
-    let mut fn_builder =
-        FunctionBuilder::new(String::from("main"), &mut program);
+    let mut program_builder = ProgramBuilder::new();
+    let mut fn_builder = program_builder.new_function(String::from("main"));
     let last_block_builder = recursed_ast_to_ir(
         ast,
         ast_root,
@@ -20,7 +19,7 @@ pub fn ast_to_ir(ast: &SlotMap<AstIdx, Ast>, ast_root: AstIdx) -> Program {
         fn_builder.seal_block(last_block_builder);
     }
     fn_builder.finish();
-    program
+    program_builder.finish()
 }
 
 fn recursed_ast_to_ir(

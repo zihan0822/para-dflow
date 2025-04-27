@@ -36,7 +36,7 @@ pub enum Instruction {
 
     Jmp(LabelIdx),
     Br(Variable, LabelIdx, LabelIdx),
-    Call(FunctionIdx, Box<[Variable]>),
+    Call(Option<Variable>, FunctionIdx, Box<[Variable]>),
     Ret(Option<Variable>),
 
     Const(Variable, Value),
@@ -87,6 +87,9 @@ impl Program {
     pub fn get_label_offset(&self, idx: LabelIdx) -> usize {
         self.labels[idx.0 as usize].0
     }
+    pub fn get_label_name(&self, idx: LabelIdx) -> &str {
+        self.get_string(self.labels[idx.0 as usize].1)
+    }
 
     pub fn add_string(&mut self, string: impl Into<String>) -> StringIdx {
         self.strings.push(string.into());
@@ -95,6 +98,12 @@ impl Program {
 
     pub fn get_string(&self, idx: StringIdx) -> &str {
         &self.strings[idx.0 as usize]
+    }
+
+    pub fn find_function_symbol(&self, name: &str) -> Option<FunctionIdx> {
+        self.functions()
+            .position(|function| function.name == name)
+            .map(|idx| FunctionIdx(idx as u32))
     }
 
     pub(crate) fn add_function(

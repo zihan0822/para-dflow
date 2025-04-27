@@ -1,17 +1,19 @@
 use crate::{
-    builder::{BasicBlockBuilder, BasicBlockIdx, FunctionBuilder},
+    builder::{BasicBlockBuilder, FunctionBuilder, ProgramBuilder},
     ir,
 };
 use bril_rs;
 use std::collections::HashMap;
 
 pub fn flattened_program_repr(input: bril_rs::Program) -> ir::Program {
-    let mut program = ir::Program::default();
+    let mut program_builder = ProgramBuilder::new();
     for function in &input.functions {
-        let builder = FunctionBuilder::new(function.name.clone(), &mut program);
-        build_fn(builder, function);
+        let mut fn_builder =
+            program_builder.new_function(function.name.clone());
+        build_fn(&mut fn_builder, function);
+        fn_builder.finish()
     }
-    program
+    program_builder.finish()
 }
 
 fn basic_block_split(
@@ -43,21 +45,15 @@ fn basic_block_split(
     basic_blocks.into_iter()
 }
 
-fn build_fn(mut fn_builder: FunctionBuilder<'_>, input: &bril_rs::Function) {
+fn build_fn(fn_builder: &mut FunctionBuilder<'_>, input: &bril_rs::Function) {
     let mut instr_builder = InstrBuilder::with_args(&input.args);
-    let mut labels_to_resolve: HashMap<BasicBlockIdx, Vec<String>> =
-        HashMap::new();
-    let mut label_name2idx: HashMap<String, BasicBlockIdx> = HashMap::new();
 
     for instrs in basic_block_split(&input.instrs) {
         let mut block_builder = BasicBlockBuilder::new();
-        let mut to_resolve = None;
-        let mut block_label_name = None;
 
         let mut instrs = instrs.iter().peekable();
         instrs.next_if(|instr| {
             if let bril_rs::Code::Label { label } = instr {
-                block_label_name = Some(label.clone());
                 block_builder.label(label.clone());
                 true
             } else {
@@ -70,41 +66,13 @@ fn build_fn(mut fn_builder: FunctionBuilder<'_>, input: &bril_rs::Function) {
                 match instr_builder.translate(instr) {
                     Translated::Ok(instr) => block_builder.add_instr(instr),
                     Translated::ToResolve(instr, labels) => {
-                        to_resolve = Some(labels);
-                        block_builder.add_instr(instr);
+                        block_builder.add_patched_instr(instr, labels);
                     }
                 }
             }
         }
 
-        let block_idx = fn_builder.seal_block(block_builder);
-        if let Some(labels) = to_resolve {
-            labels_to_resolve.insert(block_idx, labels);
-        }
-        if let Some(block_label_name) = block_label_name {
-            label_name2idx.insert(block_label_name, block_idx);
-        }
-    }
-
-    for (block_idx, to_resolve) in labels_to_resolve {
-        let label_idx: Vec<_> = to_resolve
-            .into_iter()
-            .map(|label_name| {
-                let block_idx =
-                    label_name2idx.get(&label_name).copied().unwrap_or_else(
-                        || panic!("label: {label_name} does not exist"),
-                    );
-                fn_builder.block_label(block_idx)
-            })
-            .collect();
-        match fn_builder.block_tail_mut(block_idx) {
-            ir::Instruction::Jmp(dest) => *dest = label_idx[0],
-            ir::Instruction::Br(_, true_br, false_br) => {
-                *true_br = label_idx[0];
-                *false_br = label_idx[1];
-            }
-            _ => unreachable!(),
-        }
+        fn_builder.seal_block(block_builder);
     }
 }
 
@@ -135,7 +103,13 @@ impl<'a> InstrBuilder<'a> {
 
     fn translate(&mut self, instr: &'a bril_rs::Instruction) -> Translated {
         match instr {
-            bril_rs::Instruction::Value { args, dest, op, .. } => {
+            bril_rs::Instruction::Value {
+                args,
+                dest,
+                op,
+                funcs,
+                ..
+            } => {
                 let args: Vec<_> =
                     args.iter().map(|arg| self.variable_or_next(arg)).collect();
                 let dest = self.variable_or_next(dest.as_str());
@@ -177,7 +151,16 @@ impl<'a> InstrBuilder<'a> {
                         ir::Instruction::Not(dest, args[0])
                     }
                     bril_rs::ValueOps::Id => ir::Instruction::Id(dest, args[0]),
-                    _ => unreachable!("unsupported op code"),
+                    bril_rs::ValueOps::Call => {
+                        return Translated::ToResolve(
+                            ir::Instruction::Call(
+                                Some(dest),
+                                ir::FunctionIdx(u32::MAX),
+                                args.into_boxed_slice(),
+                            ),
+                            funcs.clone(),
+                        );
+                    }
                 };
                 Translated::Ok(translated)
             }
@@ -198,7 +181,7 @@ impl<'a> InstrBuilder<'a> {
             bril_rs::Instruction::Effect {
                 args,
                 labels,
-                funcs: _funcs,
+                funcs,
                 op,
             } => {
                 let args: Vec<_> =
@@ -219,7 +202,15 @@ impl<'a> InstrBuilder<'a> {
                     bril_rs::EffectOps::Return => Translated::Ok(
                         ir::Instruction::Ret(args.first().copied()),
                     ),
-                    _ => unreachable!(),
+                    bril_rs::EffectOps::Call => Translated::ToResolve(
+                        ir::Instruction::Call(
+                            None,
+                            ir::FunctionIdx(u32::MAX),
+                            args.into_boxed_slice(),
+                        ),
+                        funcs.clone(),
+                    ),
+                    _ => panic!("unsupported effect code: {op}"),
                 }
             }
         }
