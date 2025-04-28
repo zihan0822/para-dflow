@@ -47,8 +47,24 @@ fn basic_block_split(
 
 fn build_fn(fn_builder: &mut FunctionBuilder<'_>, input: &bril_rs::Function) {
     let mut instr_builder = InstrBuilder::with_args(&input.args);
+    if let Some(return_type) = &input.return_type {
+        fn_builder.return_type(match return_type {
+            bril_rs::Type::Int => ir::Type::Int,
+            bril_rs::Type::Bool => ir::Type::Bool,
+        });
+    }
     fn_builder.parameters(
-        &instr_builder.var_map.values().copied().collect::<Vec<_>>(),
+        &input
+            .args
+            .iter()
+            .map(|arg| {
+                instr_builder
+                    .var_map
+                    .get(arg.name.as_str())
+                    .copied()
+                    .unwrap()
+            })
+            .collect::<Vec<_>>(),
     );
 
     for instrs in basic_block_split(&input.instrs) {

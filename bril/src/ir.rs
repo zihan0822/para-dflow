@@ -16,10 +16,30 @@ pub enum Value {
     Int(i64),
 }
 
+impl std::fmt::Display for Value {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Bool(val) => write!(formatter, "{val:?}")?,
+            Self::Int(val) => write!(formatter, "{val:?}")?,
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 pub enum Type {
     Int,
     Bool,
+}
+
+impl std::fmt::Display for Type {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Bool => formatter.write_str("bool")?,
+            Self::Int => formatter.write_str("int")?,
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
@@ -55,6 +75,8 @@ pub(crate) struct FunctionInternal {
     pub(crate) range: Range<usize>,
     pub(crate) name: StringIdx,
     pub(crate) parameters: Vec<Variable>,
+    pub(crate) labels: Vec<LabelIdx>,
+    pub(crate) return_type: Option<Type>,
 }
 
 pub struct Function<'a> {
@@ -62,6 +84,9 @@ pub struct Function<'a> {
     pub instructions: &'a [Instruction],
     pub name: &'a str,
     pub parameters: &'a [Variable],
+    /// offset into function's instruction buffer and label name
+    pub labels: Vec<(usize, &'a str)>,
+    pub return_type: Option<Type>,
 }
 
 #[derive(Debug, Default, PartialEq, Eq, Clone)]
@@ -74,11 +99,8 @@ pub struct Program {
 
 impl Program {
     pub fn functions(&self) -> impl Iterator<Item = Function> {
-        self.functions.iter().map(|function| Function {
-            instructions: &self.instructions[function.range.clone()],
-            name: self.get_string(function.name),
-            parameters: &function.parameters,
-        })
+        (0..self.functions.len())
+            .map(|idx| self.get_function(FunctionIdx(idx as u32)))
     }
 
     pub fn add_label(&mut self, string: impl Into<String>) -> LabelIdx {
@@ -103,6 +125,29 @@ impl Program {
 
     pub fn get_string(&self, idx: StringIdx) -> &str {
         &self.strings[idx.0 as usize]
+    }
+
+    pub fn get_function(&self, idx: FunctionIdx) -> Function {
+        let function = &self.functions[idx.0 as usize];
+        let start = function.range.start;
+        let mut labels: Vec<_> = function
+            .labels
+            .iter()
+            .map(|label_idx| {
+                (
+                    self.get_label_offset(*label_idx) - start,
+                    self.get_label_name(*label_idx),
+                )
+            })
+            .collect();
+        labels.sort_by_key(|label| label.0);
+        Function {
+            instructions: &self.instructions[function.range.clone()],
+            name: self.get_string(function.name),
+            parameters: &function.parameters,
+            return_type: function.return_type,
+            labels,
+        }
     }
 
     pub fn find_function_symbol(&self, name: &str) -> Option<FunctionIdx> {

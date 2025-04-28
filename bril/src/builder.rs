@@ -1,7 +1,9 @@
 use slotmap::{SecondaryMap, SlotMap, new_key_type};
 use std::ops::Range;
 
-use crate::ir::{FunctionInternal, Instruction, LabelIdx, Program, Variable};
+use crate::ir::{
+    FunctionInternal, Instruction, LabelIdx, Program, Type, Variable,
+};
 
 enum PatchType {
     Label(Vec<String>),
@@ -28,10 +30,10 @@ impl ProgramBuilder {
             name,
             blocks: SlotMap::with_key(),
             block_names: SecondaryMap::new(),
-            block_name_id: 0,
             program_builder: self,
             patches: vec![],
             parameters: vec![],
+            return_type: None,
         }
     }
 
@@ -59,17 +61,21 @@ impl ProgramBuilder {
 new_key_type! { pub struct BasicBlockIdx; }
 pub struct FunctionBuilder<'program> {
     name: String,
-    block_name_id: usize,
     blocks: SlotMap<BasicBlockIdx, Range<usize>>,
     block_names: SecondaryMap<BasicBlockIdx, LabelIdx>,
     program_builder: &'program mut ProgramBuilder,
     patches: Vec<Patch>,
     parameters: Vec<Variable>,
+    return_type: Option<Type>,
 }
 
 impl<'program> FunctionBuilder<'program> {
     pub fn parameters(&mut self, parameters: &[Variable]) {
-        self.parameters.extend_from_slice(parameters)
+        self.parameters.extend_from_slice(parameters);
+    }
+
+    pub fn return_type(&mut self, ty: Type) {
+        self.return_type = Some(ty);
     }
 
     pub fn block_mut(&mut self, idx: BasicBlockIdx) -> &mut [Instruction] {
@@ -88,22 +94,15 @@ impl<'program> FunctionBuilder<'program> {
         &mut self,
         block_builder: BasicBlockBuilder,
     ) -> BasicBlockIdx {
-        let label_idx = if let Some(label) = block_builder.label {
-            self.program_builder.program.add_label(label)
-        } else {
-            let label_idx = self
-                .program_builder
-                .program
-                .add_label(format!("L{}", self.block_name_id));
-            self.block_name_id += 1;
-            label_idx
-        };
+        let label_idx = block_builder
+            .label
+            .map(|label| self.program_builder.program.add_label(label));
+        let start = self.program_builder.program.instructions.len();
+
         self.program_builder
             .program
             .instructions
             .extend_from_slice(&block_builder.instrs);
-
-        let start = self.program_builder.program.get_label_offset(label_idx);
 
         // offset in patches is offset in program's instruction buffer
         self.patches.extend(block_builder.patches.into_iter().map(
@@ -115,7 +114,9 @@ impl<'program> FunctionBuilder<'program> {
         let block_idx = self
             .blocks
             .insert(start..start + block_builder.instrs.len());
-        self.block_names.insert(block_idx, label_idx);
+        if let Some(label_idx) = label_idx {
+            self.block_names.insert(block_idx, label_idx);
+        }
         block_idx
     }
 
@@ -131,7 +132,9 @@ impl<'program> FunctionBuilder<'program> {
         self.program_builder.program.add_function(FunctionInternal {
             name,
             range: start..end,
-            parameters: vec![],
+            parameters: self.parameters,
+            labels: self.block_names.values().copied().collect(),
+            return_type: self.return_type,
         });
 
         for patch in self.patches {
