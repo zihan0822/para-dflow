@@ -41,6 +41,7 @@ impl<'formatter, W: fmt::Write> Printer<'formatter, W> {
             {
                 writeln!(self.f, ".{label_name}:")?;
             }
+            write!(self.f, "\t")?;
             self.print_instruction(program, instruction)?;
         }
         // handle the special case where labels are appended to the end of
