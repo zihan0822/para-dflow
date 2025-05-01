@@ -30,6 +30,7 @@ impl ProgramBuilder {
             name,
             blocks: SlotMap::with_key(),
             block_names: SecondaryMap::new(),
+            block_name_id: 0,
             program_builder: self,
             patches: vec![],
             parameters: vec![],
@@ -63,6 +64,7 @@ pub struct FunctionBuilder<'program> {
     name: String,
     blocks: SlotMap<BasicBlockIdx, Range<usize>>,
     block_names: SecondaryMap<BasicBlockIdx, LabelIdx>,
+    block_name_id: usize,
     program_builder: &'program mut ProgramBuilder,
     patches: Vec<Patch>,
     parameters: Vec<Variable>,
@@ -94,10 +96,19 @@ impl<'program> FunctionBuilder<'program> {
         &mut self,
         block_builder: BasicBlockBuilder,
     ) -> BasicBlockIdx {
-        let label_idx = block_builder
-            .label
-            .map(|label| self.program_builder.program.add_label(label));
+        let label_idx = self.program_builder.program.add_label(
+            block_builder.label.unwrap_or_else(|| {
+                let default_label_name = format!("L{}", self.block_name_id);
+                self.block_name_id += 1;
+                default_label_name
+            }),
+        );
+
         let start = self.program_builder.program.instructions.len();
+        let block_idx = self
+            .blocks
+            .insert(start..start + block_builder.instrs.len());
+        self.block_names.insert(block_idx, label_idx);
 
         self.program_builder
             .program
@@ -111,12 +122,6 @@ impl<'program> FunctionBuilder<'program> {
                 patch
             },
         ));
-        let block_idx = self
-            .blocks
-            .insert(start..start + block_builder.instrs.len());
-        if let Some(label_idx) = label_idx {
-            self.block_names.insert(block_idx, label_idx);
-        }
         block_idx
     }
 
