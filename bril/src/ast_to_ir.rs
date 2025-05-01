@@ -13,6 +13,7 @@ pub fn ast_to_ir(ast: &SlotMap<AstIdx, Ast>, ast_root: AstIdx) -> Program {
         ast,
         ast_root,
         &mut fn_builder,
+        &mut 0,
         BasicBlockBuilder::new(),
     );
     if !last_block_builder.is_empty() {
@@ -26,6 +27,7 @@ fn recursed_ast_to_ir(
     ast: &SlotMap<AstIdx, Ast>,
     ast_root: AstIdx,
     fn_builder: &mut FunctionBuilder,
+    cur_if_else_idx: &mut usize,
     mut block_builder: BasicBlockBuilder,
 ) -> BasicBlockBuilder {
     match &ast[ast_root] {
@@ -34,43 +36,54 @@ fn recursed_ast_to_ir(
             block_builder
         }
         Ast::If(condition, if_true, if_false) => {
-            block_builder.add_instr(Instruction::Br(
-                *condition,
-                LabelIdx(0),
-                LabelIdx(0),
-            ));
-            let block_idx = fn_builder.seal_block(block_builder);
+            let true_block_label = format!("if.else.{}.true", *cur_if_else_idx);
+            let false_block_label =
+                format!("if.else.{}.false", *cur_if_else_idx);
+            let exit_label = format!("if.else.{}.exit", *cur_if_else_idx);
 
-            let true_block_builder = recursed_ast_to_ir(
+            *cur_if_else_idx += 1;
+            block_builder.add_patched_instr(
+                Instruction::Br(*condition, LabelIdx(0), LabelIdx(0)),
+                vec![true_block_label.clone(), false_block_label.clone()],
+            );
+            fn_builder.seal_block(block_builder);
+
+            let mut true_block_builder = recursed_ast_to_ir(
                 ast,
                 *if_true,
                 fn_builder,
-                BasicBlockBuilder::new(),
+                cur_if_else_idx,
+                BasicBlockBuilder::with_label(true_block_label),
             );
-            let true_block_idx = fn_builder.seal_block(true_block_builder);
-            let true_label_idx = fn_builder.block_label(true_block_idx);
+            true_block_builder.add_patched_instr(
+                Instruction::Jmp(LabelIdx(0)),
+                vec![exit_label.clone()],
+            );
+            fn_builder.seal_block(true_block_builder);
 
-            let false_block_builder = recursed_ast_to_ir(
+            let mut false_block_builder = recursed_ast_to_ir(
                 ast,
                 *if_false,
                 fn_builder,
-                BasicBlockBuilder::new(),
+                cur_if_else_idx,
+                BasicBlockBuilder::with_label(false_block_label),
             );
-            let false_block_idx = fn_builder.seal_block(false_block_builder);
-            let false_label_idx = fn_builder.block_label(false_block_idx);
-
-            if let Instruction::Br(_, if_true, if_false) =
-                fn_builder.block_tail_mut(block_idx)
-            {
-                *if_true = true_label_idx;
-                *if_false = false_label_idx;
-            }
-            BasicBlockBuilder::new()
+            false_block_builder.add_patched_instr(
+                Instruction::Jmp(LabelIdx(0)),
+                vec![exit_label.clone()],
+            );
+            fn_builder.seal_block(false_block_builder);
+            BasicBlockBuilder::with_label(exit_label)
         }
         Ast::Seq(children) => {
             for child in children {
-                block_builder =
-                    recursed_ast_to_ir(ast, *child, fn_builder, block_builder);
+                block_builder = recursed_ast_to_ir(
+                    ast,
+                    *child,
+                    fn_builder,
+                    cur_if_else_idx,
+                    block_builder,
+                );
             }
             block_builder
         }

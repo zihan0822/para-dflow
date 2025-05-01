@@ -196,6 +196,14 @@ impl BasicBlockBuilder {
         }
     }
 
+    pub fn with_label(label: String) -> Self {
+        Self {
+            instrs: vec![],
+            label: Some(label),
+            patches: vec![],
+        }
+    }
+
     pub fn add_instr(&mut self, instr: Instruction) {
         self.instrs.push(instr)
     }
