@@ -1,238 +1,123 @@
-use bril_rs::program::*;
-pub use macros::Sample;
+use bril::ir::{Instruction, Type, Value, Variable};
 use rand::{
     Rng,
-    distr::{self, Alphanumeric, Distribution},
-    seq::IndexedRandom,
+    distr::{self, Distribution},
 };
-use std::collections::HashMap;
-
-pub trait Sample: Sized {
-    fn sample_with_ctx<R: Rng + ?Sized>(ctx: &Context, rng: &mut R) -> Self;
-    fn sample<R: Rng + ?Sized>(rng: &mut R) -> Self;
-}
 
 pub struct BrilDist;
 
-#[derive(Debug, Clone)]
-pub struct Prototype {
-    pub name: String,
-    pub args: Vec<Argument>,
-    pub return_type: Option<Type>,
-}
+pub struct FuzzedValueInstr(pub Instruction);
+pub struct FuzzedConstInstr(pub Instruction);
+pub struct FuzzedType(pub Type);
 
-impl Distribution<Prototype> for BrilDist {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Prototype {
-        use crate::stats::func;
-        let num_args =
-            *sample_one_by_weights(&func::NUM_ARGS, &func::NUM_ARGS_W, rng);
-        let name = generate_random_ident(rng);
-        let args: Vec<_> = (0..num_args)
-            .map(|_| {
-                let arg_type = sample_one_by_weights(
-                    &func::ARGS_TY,
-                    &func::ARGS_TY_W,
-                    rng,
-                )
-                .clone();
-                Argument {
-                    name: generate_random_ident(rng),
-                    arg_type,
-                }
-            })
-            .collect();
-        Prototype {
-            name,
-            args,
-            return_type: None,
-        }
+const UNDEF_INT: Variable = Variable(u32::MAX, Type::Int);
+const UNDEF_BOOL: Variable = Variable(u32::MAX, Type::Bool);
+
+impl Distribution<FuzzedType> for BrilDist {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> FuzzedType {
+        FuzzedType(*sample_one_by_weights(
+            &[Type::Int, Type::Bool],
+            &[0.75, 0.25],
+            rng,
+        ))
     }
 }
 
-#[derive(Default, Clone)]
-pub struct Context {
-    pub local_vars: HashMap<Type, Vec<String>>,
-    _fns: Vec<Prototype>,
-}
-
-impl Context {
-    pub fn from_prototype(prototype: &Prototype) -> Self {
-        let mut local_vars: HashMap<_, Vec<String>> = HashMap::new();
-        for arg in &prototype.args {
-            local_vars
-                .entry(arg.arg_type.clone())
-                .or_default()
-                .push(arg.name.clone());
-        }
-        Self {
-            local_vars,
-            _fns: vec![],
-        }
-    }
-
-    /// sample with replacement
-    pub fn sample_operands_of_ty<R: Rng + ?Sized>(
-        &self,
-        ty: Type,
-        num: usize,
-        rng: &mut R,
-    ) -> Option<Vec<String>> {
-        self.local_vars.get(&ty).and_then(|candidates| {
-            if candidates.is_empty() {
-                None
-            } else {
-                Some(
-                    (0..num)
-                        .map(|_| candidates.choose(rng).unwrap())
-                        .cloned()
-                        .collect(),
-                )
+impl Distribution<FuzzedConstInstr> for BrilDist {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> FuzzedConstInstr {
+        let ty: FuzzedType = BrilDist.sample(rng);
+        let const_instr = match ty.0 {
+            Type::Bool => {
+                Instruction::Const(UNDEF_BOOL, Value::Bool(rng.random()))
             }
-        })
-    }
-
-    pub fn insert_new_local_var(&mut self, var: String, ty: Type) {
-        self.local_vars
-            .entry(ty)
-            .and_modify(|vars| {
-                vars.push(var.clone());
-                vars.dedup()
-            })
-            .or_insert(vec![var]);
-    }
-
-    pub fn intersection(&self, other: Self) -> Self {
-        let mut ret = self.clone();
-        for (ty, local_vars) in &mut ret.local_vars {
-            let other_vars =
-                other.local_vars.get(ty).cloned().unwrap_or_default();
-            local_vars.retain(|this_var| {
-                other_vars.iter().any(|other_var| other_var.eq(this_var))
-            });
-        }
-        ret
+            Type::Int => Instruction::Const(
+                UNDEF_INT,
+                Value::Int(rng.random::<i8>() as i64),
+            ),
+        };
+        FuzzedConstInstr(const_instr)
     }
 }
 
-#[derive(Clone)]
-pub struct ArithInst(pub Instruction);
-
-#[derive(Clone)]
-pub struct BoolInst(pub Instruction);
-
-impl Distribution<ArithInst> for BrilDist {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ArithInst {
-        ArithInst(Instruction::Constant {
-            dest: generate_random_ident(rng),
-            op: ConstOps::Const,
-            const_type: Type::Int,
-            value: Literal::Int(rng.random::<i8>() as _),
-        })
-    }
+enum ValueOps {
+    Add,
+    Sub,
+    Div,
+    Mul,
+    Lt,
+    Gt,
+    Le,
+    Ge,
+    Not,
+    And,
+    Or,
+    Eq,
 }
 
-impl Sample for ArithInst {
-    fn sample_with_ctx<R: Rng + ?Sized>(ctx: &Context, rng: &mut R) -> Self {
-        let op = *sample_one_by_weights(
-            &[
-                ValueOps::Add,
-                ValueOps::Sub,
-                ValueOps::Mul,
-                ValueOps::Div,
-                ValueOps::Id,
-            ],
-            &[1.0; 5],
-            rng,
-        );
-        let num_args = if matches!(op, ValueOps::Id) { 1 } else { 2 };
-        if let Some(args) = ctx.sample_operands_of_ty(Type::Int, num_args, rng)
-        {
-            ArithInst(Instruction::Value {
-                args,
-                dest: generate_random_ident(rng),
-                funcs: vec![],
-                labels: vec![],
-                op,
-                op_type: Type::Int,
-            })
-        } else {
-            // fallback to direct sample
-            <ArithInst as Sample>::sample(rng)
-        }
+impl Distribution<FuzzedValueInstr> for BrilDist {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> FuzzedValueInstr {
+        let operands_ty: FuzzedType = BrilDist.sample(rng);
+        let value_instr = match operands_ty.0 {
+            Type::Int => match sample_one_by_weights(
+                &[ValueOps::Add, ValueOps::Sub, ValueOps::Div, ValueOps::Mul],
+                &[1.0; 4],
+                rng,
+            ) {
+                ValueOps::Add => {
+                    Instruction::Add(UNDEF_INT, UNDEF_INT, UNDEF_INT)
+                }
+                ValueOps::Sub => {
+                    Instruction::Sub(UNDEF_INT, UNDEF_INT, UNDEF_INT)
+                }
+                ValueOps::Mul => {
+                    Instruction::Mul(UNDEF_INT, UNDEF_INT, UNDEF_INT)
+                }
+                ValueOps::Div => {
+                    Instruction::Div(UNDEF_INT, UNDEF_INT, UNDEF_INT)
+                }
+                _ => unreachable!(),
+            },
+            Type::Bool => match sample_one_by_weights(
+                &[
+                    ValueOps::Lt,
+                    ValueOps::Gt,
+                    ValueOps::Le,
+                    ValueOps::Ge,
+                    ValueOps::Eq,
+                    ValueOps::And,
+                    ValueOps::Or,
+                    ValueOps::Not,
+                ],
+                &[1.0; 8],
+                rng,
+            ) {
+                ValueOps::Lt => {
+                    Instruction::Lt(UNDEF_BOOL, UNDEF_INT, UNDEF_INT)
+                }
+                ValueOps::Gt => {
+                    Instruction::Gt(UNDEF_BOOL, UNDEF_INT, UNDEF_INT)
+                }
+                ValueOps::Le => {
+                    Instruction::Le(UNDEF_BOOL, UNDEF_INT, UNDEF_INT)
+                }
+                ValueOps::Ge => {
+                    Instruction::Ge(UNDEF_BOOL, UNDEF_INT, UNDEF_INT)
+                }
+                ValueOps::Eq => {
+                    Instruction::Eq(UNDEF_BOOL, UNDEF_INT, UNDEF_INT)
+                }
+                ValueOps::And => {
+                    Instruction::And(UNDEF_BOOL, UNDEF_BOOL, UNDEF_BOOL)
+                }
+                ValueOps::Or => {
+                    Instruction::Or(UNDEF_BOOL, UNDEF_BOOL, UNDEF_BOOL)
+                }
+                ValueOps::Not => Instruction::Not(UNDEF_BOOL, UNDEF_BOOL),
+                _ => unreachable!(),
+            },
+        };
+        FuzzedValueInstr(value_instr)
     }
-
-    fn sample<R: Rng + ?Sized>(rng: &mut R) -> Self {
-        rng.sample(BrilDist)
-    }
-}
-
-impl Distribution<BoolInst> for BrilDist {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BoolInst {
-        BoolInst(Instruction::Constant {
-            dest: generate_random_ident(rng),
-            op: ConstOps::Const,
-            const_type: Type::Bool,
-            value: Literal::Bool(rng.random()),
-        })
-    }
-}
-
-impl Sample for BoolInst {
-    fn sample_with_ctx<R: Rng + ?Sized>(ctx: &Context, rng: &mut R) -> Self {
-        let op = *sample_one_by_weights(
-            &[
-                ValueOps::Lt,
-                ValueOps::Gt,
-                ValueOps::Le,
-                ValueOps::Ge,
-                ValueOps::Not,
-                ValueOps::And,
-                ValueOps::Or,
-                ValueOps::Eq,
-            ],
-            &[1.0; 8],
-            rng,
-        );
-        let num_args = if matches!(op, ValueOps::Not) { 1 } else { 2 };
-        if let Some(args) = ctx.sample_operands_of_ty(Type::Bool, num_args, rng)
-        {
-            BoolInst(Instruction::Value {
-                args,
-                dest: generate_random_ident(rng),
-                funcs: vec![],
-                labels: vec![],
-                op,
-                op_type: Type::Bool,
-            })
-        } else {
-            <Self as Sample>::sample(rng)
-        }
-    }
-    fn sample<R: Rng + ?Sized>(rng: &mut R) -> Self {
-        rng.sample(BrilDist)
-    }
-}
-
-pub fn generate_random_ident<R: Rng + ?Sized>(rng: &mut R) -> String {
-    const MAX_IDENT_LEN: usize = 8;
-    let mut len = rng.random_range(1..MAX_IDENT_LEN);
-    let first_char = std::iter::once('_')
-        .chain('a'..='z')
-        .chain('A'..='Z')
-        .collect::<Vec<_>>()
-        .choose(rng)
-        .copied()
-        .unwrap();
-
-    if first_char == '_' && len == 1 {
-        len += 1;
-    }
-    let rest: String = rng
-        .sample_iter(Alphanumeric)
-        .take(len)
-        .map(char::from)
-        .collect();
-    format!("{first_char}{rest}")
 }
 
 /// sample one element from input slice according to a weight vector

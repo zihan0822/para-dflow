@@ -1,387 +1,270 @@
-use crate::dist::*;
-use bril_rs::program::*;
-use petgraph::{
-    graph::{DiGraph, NodeIndex},
-    visit::{Dfs, DfsPostOrder},
-};
-use rand::{Rng, distr::Open01, prelude::*};
-use std::{
-    cell::RefCell,
-    collections::{HashMap, HashSet, VecDeque},
-};
+use crate::{dist::*, instr::InstrConfig};
 
-thread_local! {
-    static RNG: RefCell<rand::rngs::ThreadRng> = RefCell::new(rand::rng());
-}
-const MAX_FAN_OUT: usize = 2;
+use bril::{
+    ast::{Ast, AstIdx},
+    ast_to_ir::ast_to_ir,
+    ir::{Instruction, Program, Type, Variable},
+};
+use rand::prelude::*;
+use slotmap::SlotMap;
+use std::collections::HashMap;
 
-type TreeInner = DiGraph<usize, ()>;
-pub struct Tree {
-    pub root: NodeIndex,
-    pub inner: TreeInner,
+pub struct Fuzzer<'a, R: Rng + ?Sized> {
+    ctx: Context<'a, R>,
+    root_ast_layout: AstLayout,
 }
 
-pub fn generate_bril_program(num_fns: usize) -> Program {
-    Program {
-        functions: (0..num_fns)
-            .map(|_| {
-                RNG.with_borrow_mut(|rng| {
-                    let prototype = rng.sample(BrilDist);
-                    generate_fn(8, prototype, rng)
-                })
-            })
-            .collect(),
+impl<R: Rng + ?Sized> Fuzzer<'_, R> {
+    pub fn fuzz(&mut self) -> Program {
+        let root = self.ctx.sample_ast(&self.root_ast_layout);
+        ast_to_ir(&self.ctx.ast, root)
     }
 }
 
-enum BlkExit<'a> {
-    Return,
-    Fallthrough,
-    Jump(&'a str),
-    Branch(&'a str, &'a str),
+pub struct FuzzerBuilder<'a, R: Rng + ?Sized> {
+    config: FuzzConfig,
+    num_blocks: usize,
+    max_block_depth: usize,
+    rng: &'a mut R,
 }
 
-fn generate_fn<R: Rng + ?Sized>(
-    num_instrs: usize,
-    prototype: Prototype,
-    rng: &mut R,
-) -> Function {
-    let num_nodes = 4;
-    let (cfg, entry) = generate_reducible_cfg(num_nodes, rng);
-    let labels: Vec<_> = (0..num_nodes)
-        .map(|_| crate::dist::generate_random_ident(rng))
-        .collect();
-    let mut instrs = vec![];
-    let mut visit = Dfs::new(&cfg, entry);
-
-    let dominators = get_dominators(&cfg, entry);
-    let mut ctx_at_exit: HashMap<NodeIndex, Context> = HashMap::new();
-
-    while let Some(next) = visit.next(&cfg) {
-        let mut ctx = dominators
-            .get(&next)
-            .unwrap()
-            .iter()
-            .filter_map(|dom| {
-                if *dom != next {
-                    Some(ctx_at_exit.get(dom).unwrap().clone())
-                } else {
-                    None
-                }
-            })
-            .reduce(|c1, c2| c1.intersection(c2))
-            .unwrap_or(Context::from_prototype(&prototype));
-
-        let neighbors: Vec<_> = cfg.neighbors(next).collect();
-        let exit = match neighbors.len() {
-            0 => BlkExit::Return,
-            1 => {
-                if cfg.find_edge(next, neighbors[0]).is_some() {
-                    BlkExit::Fallthrough
-                } else {
-                    BlkExit::Jump(&labels[cfg[neighbors[0]]])
-                }
-            }
-            2 => BlkExit::Branch(
-                &labels[cfg[neighbors[0]]],
-                &labels[cfg[neighbors[1]]],
-            ),
-            _ => unreachable!("invalid out-degree: {}", neighbors.len()),
-        };
-        instrs.extend(generate_code_blk(
-            num_instrs,
-            &mut ctx,
-            &labels[cfg[next]],
-            exit,
+impl<'a, R: Rng + ?Sized> FuzzerBuilder<'a, R> {
+    pub fn with_rng(rng: &'a mut R) -> Self {
+        Self {
+            config: FuzzConfig {
+                block_size_distr: rand_distr::Normal::new(20.0, 5.0).unwrap(),
+            },
+            num_blocks: 4,
+            max_block_depth: 1,
             rng,
-        ));
-        ctx_at_exit.insert(next, ctx);
-    }
-
-    Function {
-        args: prototype.args,
-        instrs,
-        name: prototype.name,
-        return_type: prototype.return_type,
-    }
-}
-
-fn generate_code_blk<R: Rng + ?Sized>(
-    num_instrs: usize,
-    ctx: &mut Context,
-    label: &str,
-    exit: BlkExit<'_>,
-    rng: &mut R,
-) -> Vec<Code> {
-    // blk starts with label
-    let mut instrs = vec![Code::Label {
-        label: label.to_string(),
-    }];
-    #[derive(Sample)]
-    enum BoolOrArith {
-        #[w = 0.2]
-        Bool(BoolInst),
-        #[w = 0.8]
-        Arith(ArithInst),
-    }
-
-    for _ in 0..num_instrs {
-        let next = match BoolOrArith::sample_with_ctx(ctx, rng) {
-            BoolOrArith::Bool(bool_instr) => bool_instr.0,
-            BoolOrArith::Arith(arith_instr) => arith_instr.0,
-        };
-        let (dest, op_type) = parse_dest_and_ty(&next);
-        ctx.insert_new_local_var(dest, op_type);
-        instrs.push(Code::Instruction(next));
-    }
-    match exit {
-        BlkExit::Fallthrough | BlkExit::Return => {}
-        BlkExit::Jump(b) => {
-            instrs.push(Code::Instruction(Instruction::Effect {
-                labels: vec![b.to_string()],
-                funcs: vec![],
-                args: vec![],
-                op: EffectOps::Jump,
-            }))
-        }
-        BlkExit::Branch(b1, b2) => {
-            instrs.push(Code::Instruction(Instruction::Effect {
-                labels: vec![b1.to_string(), b2.to_string()],
-                funcs: vec![],
-                args: vec![],
-                op: EffectOps::Branch,
-            }))
-        }
-    }
-    instrs
-}
-
-fn parse_dest_and_ty(instr: &Instruction) -> (String, Type) {
-    match instr {
-        Instruction::Value { dest, op_type, .. } => {
-            (dest.clone(), op_type.clone())
-        }
-        Instruction::Constant {
-            dest, const_type, ..
-        } => (dest.clone(), const_type.clone()),
-        _ => unreachable!(),
-    }
-}
-
-fn generate_reducible_cfg<R: Rng + ?Sized>(
-    num_nodes: usize,
-    rng: &mut R,
-) -> (DiGraph<usize, ()>, NodeIndex) {
-    let tree = generate_random_tree(num_nodes, 2, rng);
-    let mut cfg = tree.inner.clone();
-    add_random_cross_and_forward_edges(&mut cfg, &tree, rng);
-    add_random_back_edges(&mut cfg, tree.root, rng);
-    (cfg, tree.root)
-}
-
-fn add_random_cross_and_forward_edges<R: Rng + ?Sized>(
-    cfg: &mut DiGraph<usize, ()>,
-    tree: &Tree,
-    rng: &mut R,
-) {
-    let desc = find_descendants(tree);
-
-    for node in tree.inner.node_indices() {
-        let num_added = *sample_one_by_weights(&[0, 1], &[0.7, 0.3], rng);
-
-        for to in siblings(&tree.inner, node)
-            .into_iter()
-            .chain(Some(node))
-            .flat_map(|sib| desc.get(&sib).cloned().unwrap())
-            .filter(|nx| tree.inner.find_edge(node, *nx).is_none())
-            .chain(siblings(&tree.inner, node))
-            .choose_multiple(rng, num_added)
-        {
-            cfg.add_edge(node, to, ());
         }
     }
 
-    for node in cfg.node_indices() {
-        let out_degree = cfg.neighbors(node).count();
-        let Some(num_to_keep) = (1..=out_degree.min(MAX_FAN_OUT)).choose(rng)
-        else {
-            continue;
-        };
-        let to_remove = cfg
-            .neighbors(node)
-            .filter(|to| {
-                cfg.neighbors_directed(*to, petgraph::Direction::Incoming)
-                    .count()
-                    >= 2
-            })
-            .choose_multiple(rng, out_degree - num_to_keep);
-        for nx in to_remove {
-            let edge_idx = cfg.find_edge(node, nx).unwrap();
-            cfg.remove_edge(edge_idx);
+    pub fn block_size(mut self, mean: usize, std_dev: f64) -> Self {
+        self.config.block_size_distr =
+            rand_distr::Normal::new(mean as _, std_dev).unwrap();
+        self
+    }
+
+    pub fn num_blocks(mut self, num_blocks: usize) -> Self {
+        self.num_blocks = num_blocks;
+        self
+    }
+
+    pub fn max_block_depth(mut self, level: usize) -> Self {
+        self.max_block_depth = level;
+        self
+    }
+
+    pub fn finish(self) -> Fuzzer<'a, R> {
+        Fuzzer {
+            ctx: Context {
+                rng: self.rng,
+                live_vars: HashMap::default(),
+                ast: SlotMap::with_key(),
+                next_var: 0,
+                config: self.config,
+            },
+            root_ast_layout: AstLayout {
+                num_blocks: self.num_blocks,
+                max_block_depth: self.max_block_depth,
+            },
         }
     }
 }
 
-fn add_random_back_edges<R: Rng + ?Sized>(
-    cfg: &mut DiGraph<usize, ()>,
-    entry: NodeIndex,
-    rng: &mut R,
-) {
-    let dominators = get_dominators(cfg, entry);
-    for node in cfg.node_indices() {
-        let out_degree = cfg.neighbors(node).count();
-        // we don't add extra backedge to potential exit node
-        if out_degree < MAX_FAN_OUT
-            && out_degree > 0
-            && rng.sample::<f32, Open01>(Open01) > 0.3
-        {
-            let num_added = (1..=MAX_FAN_OUT - out_degree).choose(rng).unwrap();
-            let flattened_dom =
-                Vec::from_iter(dominators.get(&node).cloned().unwrap());
-            // prefer longer back edge
-            let backedge_to = flattened_dom
-                .choose_multiple_weighted(rng, num_added, |dom| {
-                    1.0 / (dominators.get(dom).unwrap().len() as f64 + 1.0)
+struct FuzzConfig {
+    block_size_distr: rand_distr::Normal<f64>,
+}
+
+struct SnapShot {
+    next_var: usize,
+    live_vars: HashMap<Type, Vec<Variable>>,
+}
+
+impl SnapShot {
+    fn merge(&mut self, other: Self) {
+        self.next_var = other.next_var.max(self.next_var);
+        for (ty, vars) in &mut self.live_vars {
+            vars.retain(|var| {
+                other.live_vars.get(ty).is_some_and(|other_vars| {
+                    other_vars.iter().any(|other_var| other_var.eq(var))
                 })
-                .unwrap();
-            for nx in backedge_to {
-                cfg.add_edge(node, *nx, ());
-            }
+            });
         }
     }
 }
 
-fn siblings(tree: &DiGraph<usize, ()>, node: NodeIndex) -> Vec<NodeIndex> {
-    let mut parent =
-        tree.neighbors_directed(node, petgraph::Direction::Incoming);
-    assert!(parent.clone().count() <= 1);
-    parent
-        .next()
-        .map(|parent| tree.neighbors(parent).filter(|nx| *nx != node).collect())
-        .unwrap_or_default()
+struct AstLayout {
+    max_block_depth: usize,
+    num_blocks: usize,
 }
 
-fn find_descendants(tree: &Tree) -> HashMap<NodeIndex, HashSet<NodeIndex>> {
-    let mut desc: HashMap<NodeIndex, HashSet<NodeIndex>> = HashMap::new();
-    let mut visit = DfsPostOrder::new(&tree.inner, tree.root);
-    while let Some(nx) = visit.next(&tree.inner) {
-        let neighbors = tree.inner.neighbors(nx);
-        let joined_from_child: HashSet<NodeIndex> = neighbors
-            .clone()
-            .flat_map(|neighbor| desc.get(&neighbor).cloned().unwrap())
-            .chain(neighbors)
-            .collect();
-        assert!(desc.insert(nx, joined_from_child).is_none())
-    }
-    desc
+struct Context<'a, R: Rng + ?Sized> {
+    rng: &'a mut R,
+    live_vars: HashMap<Type, Vec<Variable>>,
+    ast: SlotMap<AstIdx, Ast>,
+    next_var: usize,
+    config: FuzzConfig,
 }
 
-pub fn generate_random_tree<R: Rng + ?Sized>(
-    num_nodes: usize,
-    max_fan_out: usize,
-    rng: &mut R,
-) -> Tree {
-    let mut tree = DiGraph::<usize, ()>::new();
-    struct RandomTreeGen<'a, R: Rng + ?Sized> {
-        max_fan_out: usize,
-        rng: &'a mut R,
-        tree: &'a mut TreeInner,
-    }
-    impl<R: Rng + ?Sized> RandomTreeGen<'_, R> {
-        fn recurse_on_subtree(
-            &mut self,
-            inorder_range: std::ops::Range<usize>,
-        ) -> Option<NodeIndex> {
-            if inorder_range.is_empty() {
-                return None;
+impl<R: Rng + ?Sized> Context<'_, R> {
+    /// this might return None, if the required operands are not be sampled
+    /// from live variables
+    pub fn sample_instr(&mut self) -> Option<AstIdx> {
+        enum ConstOrValue {
+            Const,
+            Value,
+        }
+        let mut instr = match sample_one_by_weights(
+            &[ConstOrValue::Const, ConstOrValue::Value],
+            &[0.25, 0.75],
+            self.rng,
+        ) {
+            ConstOrValue::Const => {
+                <BrilDist as Distribution<FuzzedConstInstr>>::sample(
+                    &BrilDist, self.rng,
+                )
+                .0
             }
-            let (mut start, end) = (inorder_range.start, inorder_range.end);
-            let num_nodes = end - start;
-            let num_subtree =
-                self.rng.random_range(1..=self.max_fan_out.min(num_nodes));
+            ConstOrValue::Value => {
+                <BrilDist as Distribution<FuzzedValueInstr>>::sample(
+                    &BrilDist, self.rng,
+                )
+                .0
+            }
+        };
+        if !matches!(instr, Instruction::Const(..)) {
+            let mut operands = vec![];
+            for _ in 0..instr.num_operands() {
+                operands.push(self.sample_var_of_ty(instr.operands_ty())?);
+            }
+            instr.config_operands(operands);
+        }
+        let dest = self.alloc_next_var(instr.dest_ty());
+        instr.config_dest(dest);
+        Some(self.ast.insert(Ast::Instruction(instr)))
+    }
 
-            let subtree_size_split: Vec<usize> = {
-                let mut interval: Vec<usize> = std::iter::once(0)
-                    .chain(
-                        (1..=num_nodes - 1)
-                            .choose_multiple(self.rng, num_subtree - 1),
+    pub fn sample_block(&mut self) -> AstIdx {
+        let block_size =
+            (self.config.block_size_distr.sample(self.rng) as isize).abs();
+        let mut block = vec![];
+        // block_size not actually precise, we may end up insert a few more
+        // const instrs
+        for _ in 0..block_size {
+            let next = loop {
+                if let Some(instr) = self.sample_instr() {
+                    break instr;
+                }
+                // backoff, sample const instr
+                let mut new_const =
+                    <BrilDist as Distribution<FuzzedConstInstr>>::sample(
+                        &BrilDist, self.rng,
                     )
-                    .chain(std::iter::once(num_nodes))
-                    .collect();
-                interval.sort();
-                interval.windows(2).map(|w| w[1] - w[0]).collect()
+                    .0;
+                let dest = self.alloc_next_var(new_const.dest_ty());
+                new_const.config_dest(dest);
+                block.push(self.ast.insert(Ast::Instruction(new_const)));
             };
+            block.push(next);
+        }
+        self.ast.insert(Ast::Seq(block))
+    }
 
-            let root_val = subtree_size_split
-                .iter()
-                .scan(start, |acc, subtree_size| {
-                    *acc += subtree_size;
-                    Some(*acc - 1)
-                })
-                .choose(self.rng)
-                .unwrap();
-            let root = self.tree.add_node(root_val);
+    pub fn _sample_loop(&mut self) -> AstIdx {
+        todo!()
+    }
 
-            for subtree_size in subtree_size_split {
-                let subtree_range = if root_val == start + subtree_size - 1 {
-                    if subtree_size == 1 {
+    pub fn sample_if_else(&mut self, layout: &AstLayout) -> Option<AstIdx> {
+        if layout.num_blocks < 2 {
+            return None;
+        }
+        let condition = self.sample_var_of_ty(Type::Bool)?;
+        let pre_branch_snapshot = self.snapshot();
+
+        // don't allow empty block
+        let if_num_block = (1..layout.num_blocks).choose(self.rng).unwrap();
+        let if_ast = self.sample_ast(&AstLayout {
+            max_block_depth: layout.max_block_depth,
+            num_blocks: if_num_block,
+        });
+        let mut if_exit_snapshot = self.restore_snapshot(pre_branch_snapshot);
+
+        let else_ast = self.sample_ast(&AstLayout {
+            max_block_depth: layout.max_block_depth,
+            num_blocks: layout.num_blocks - if_num_block,
+        });
+        let else_exit_snapshot = self.snapshot();
+        if_exit_snapshot.merge(else_exit_snapshot);
+        self.restore_snapshot(if_exit_snapshot);
+        Some(self.ast.insert(Ast::If(condition, if_ast, else_ast)))
+    }
+
+    pub fn sample_ast(&mut self, layout: &AstLayout) -> AstIdx {
+        enum AstNode {
+            LeafBlock,
+            IfElse,
+        }
+
+        let mut seq = vec![];
+        let mut budget = layout.num_blocks;
+        while budget > 0 {
+            match sample_one_by_weights(
+                &[AstNode::LeafBlock, AstNode::IfElse],
+                &[0.6, 0.4],
+                self.rng,
+            ) {
+                AstNode::LeafBlock => {
+                    seq.push(self.sample_block());
+                    budget -= 1;
+                }
+                AstNode::IfElse => {
+                    if layout.max_block_depth == 0 || budget < 2 {
                         continue;
-                    } else {
-                        start..start + subtree_size - 1
                     }
-                } else {
-                    start..start + subtree_size
-                };
-                let child = self.recurse_on_subtree(subtree_range).unwrap();
-                self.tree.add_edge(root, child, ());
-                start += subtree_size;
+                    let subtree_layout = AstLayout {
+                        max_block_depth: (0..layout.max_block_depth)
+                            .choose(self.rng)
+                            .unwrap(),
+                        num_blocks: (2..=budget).choose(self.rng).unwrap(),
+                    };
+                    if let Some(if_else_ast) =
+                        self.sample_if_else(&subtree_layout)
+                    {
+                        seq.push(if_else_ast);
+                        budget -= subtree_layout.num_blocks;
+                    }
+                }
             }
-            Some(root)
         }
+        self.ast.insert(Ast::Seq(seq))
     }
-    let mut generator = RandomTreeGen {
-        max_fan_out,
-        rng,
-        tree: &mut tree,
-    };
-    let root = generator.recurse_on_subtree(0..num_nodes).unwrap();
-    Tree { root, inner: tree }
-}
 
-fn get_dominators(
-    graph: &DiGraph<usize, ()>,
-    entry: NodeIndex,
-) -> HashMap<NodeIndex, HashSet<NodeIndex>> {
-    let mut ret: HashMap<_, _> = graph
-        .node_indices()
-        .map(|node| {
-            if node == entry {
-                (node, HashSet::from_iter([entry]))
-            } else {
-                (node, HashSet::from_iter(graph.node_indices()))
-            }
-        })
-        .collect();
-    let mut worklist = VecDeque::from_iter(graph.node_indices());
-    while !worklist.is_empty() {
-        let item = worklist.pop_front().unwrap();
-        let dominator = if item == entry {
-            HashSet::from_iter([entry])
-        } else {
-            let mut dominator = graph
-                .neighbors_directed(item, petgraph::Direction::Incoming)
-                .map(|parent| ret.get(&parent).cloned().unwrap())
-                .reduce(|dom1, dom2| {
-                    dom1.intersection(&dom2).copied().collect()
-                })
-                .unwrap();
-            dominator.insert(item);
-            dominator
-        };
-        if !dominator.eq(ret.get(&item).unwrap()) {
-            worklist.extend(graph.neighbors(item));
-            ret.insert(item, dominator);
+    fn alloc_next_var(&mut self, ty: Type) -> Variable {
+        let next = Variable(self.next_var as u32, ty);
+        self.next_var += 1;
+        self.live_vars.entry(ty).or_default().push(next);
+        next
+    }
+
+    fn sample_var_of_ty(&mut self, ty: Type) -> Option<Variable> {
+        self.live_vars
+            .get(&ty)
+            .and_then(|candidates| candidates.choose(self.rng).cloned())
+    }
+
+    fn snapshot(&self) -> SnapShot {
+        SnapShot {
+            next_var: self.next_var,
+            live_vars: self.live_vars.clone(),
         }
     }
-    ret
+
+    fn restore_snapshot(&mut self, snapshot: SnapShot) -> SnapShot {
+        let cur_snapshot = self.snapshot();
+        self.next_var = snapshot.next_var;
+        self.live_vars = snapshot.live_vars;
+        cur_snapshot
+    }
 }

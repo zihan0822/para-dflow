@@ -8,4 +8,5 @@ edition = "2024"
 
 [workspace.dependencies]
 bril-rs = { git = "https://github.com/sampsyo/bril", rev = "175580e" }
+bril = { path = "bril" }
 slotmap = "1.0.7"
