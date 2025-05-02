@@ -14,6 +14,7 @@ pub fn ast_to_ir(ast: &SlotMap<AstIdx, Ast>, ast_root: AstIdx) -> Program {
         ast_root,
         &mut fn_builder,
         &mut 0,
+        &mut 0,
         BasicBlockBuilder::new(),
     );
     if !last_block_builder.is_empty() {
@@ -28,6 +29,7 @@ fn recursed_ast_to_ir(
     ast_root: AstIdx,
     fn_builder: &mut FunctionBuilder,
     cur_if_else_idx: &mut usize,
+    cur_loop_idx: &mut usize,
     mut block_builder: BasicBlockBuilder,
 ) -> BasicBlockBuilder {
     match &ast[ast_root] {
@@ -53,6 +55,7 @@ fn recursed_ast_to_ir(
                 *if_true,
                 fn_builder,
                 cur_if_else_idx,
+                cur_loop_idx,
                 BasicBlockBuilder::with_label(true_block_label),
             );
             true_block_builder.add_patched_instr(
@@ -66,6 +69,7 @@ fn recursed_ast_to_ir(
                 *if_false,
                 fn_builder,
                 cur_if_else_idx,
+                cur_loop_idx,
                 BasicBlockBuilder::with_label(false_block_label),
             );
             false_block_builder.add_patched_instr(
@@ -82,10 +86,41 @@ fn recursed_ast_to_ir(
                     *child,
                     fn_builder,
                     cur_if_else_idx,
+                    cur_loop_idx,
                     block_builder,
                 );
             }
             block_builder
+        }
+        Ast::Loop(condition, body) => {
+            let header_label = format!("loop.{}.header", *cur_loop_idx);
+            let body_label = format!("loop.{}.body", *cur_loop_idx);
+            let exit_label = format!("loop.{}.exit", *cur_loop_idx);
+            *cur_loop_idx += 1;
+            fn_builder.seal_block(block_builder);
+
+            let mut header_block_builder =
+                BasicBlockBuilder::with_label(&header_label);
+            header_block_builder.add_patched_instr(
+                Instruction::Br(*condition, LabelIdx(0), LabelIdx(0)),
+                vec![body_label.clone(), exit_label.clone()],
+            );
+            fn_builder.seal_block(header_block_builder);
+
+            let mut body_builder = recursed_ast_to_ir(
+                ast,
+                *body,
+                fn_builder,
+                cur_if_else_idx,
+                cur_loop_idx,
+                BasicBlockBuilder::with_label(&body_label),
+            );
+            body_builder.add_patched_instr(
+                Instruction::Jmp(LabelIdx(0)),
+                vec![header_label],
+            );
+            fn_builder.seal_block(body_builder);
+            BasicBlockBuilder::with_label(exit_label)
         }
     }
 }

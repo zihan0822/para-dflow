@@ -196,10 +196,10 @@ impl BasicBlockBuilder {
         }
     }
 
-    pub fn with_label(label: String) -> Self {
+    pub fn with_label(label: impl Into<String>) -> Self {
         Self {
             instrs: vec![],
-            label: Some(label),
+            label: Some(label.into()),
             patches: vec![],
         }
     }

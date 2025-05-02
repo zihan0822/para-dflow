@@ -8,4 +8,5 @@ pub enum Ast {
     Instruction(Instruction),
     If(Variable, AstIdx, AstIdx),
     Seq(Vec<AstIdx>),
+    Loop(Variable, AstIdx),
 }
