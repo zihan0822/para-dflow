@@ -172,8 +172,13 @@ impl<R: Rng + ?Sized> Context<'_, R> {
         self.ast.insert(Ast::Seq(block))
     }
 
-    pub fn _sample_loop(&mut self) -> AstIdx {
-        todo!()
+    pub fn sample_loop(&mut self, layout: &AstLayout) -> Option<AstIdx> {
+        if layout.num_blocks < 1 {
+            return None;
+        }
+        let condition = self.sample_var_of_ty(Type::Bool)?;
+        let body = self.sample_ast(layout);
+        Some(self.ast.insert(Ast::Loop(condition, body)))
     }
 
     pub fn sample_if_else(&mut self, layout: &AstLayout) -> Option<AstIdx> {
@@ -205,14 +210,15 @@ impl<R: Rng + ?Sized> Context<'_, R> {
         enum AstNode {
             LeafBlock,
             IfElse,
+            Loop,
         }
 
         let mut seq = vec![];
         let mut budget = layout.num_blocks;
         while budget > 0 {
             match sample_one_by_weights(
-                &[AstNode::LeafBlock, AstNode::IfElse],
-                &[0.6, 0.4],
+                &[AstNode::LeafBlock, AstNode::IfElse, AstNode::Loop],
+                &[0.6, 0.2, 0.2],
                 self.rng,
             ) {
                 AstNode::LeafBlock => {
@@ -233,6 +239,21 @@ impl<R: Rng + ?Sized> Context<'_, R> {
                         self.sample_if_else(&subtree_layout)
                     {
                         seq.push(if_else_ast);
+                        budget -= subtree_layout.num_blocks;
+                    }
+                }
+                AstNode::Loop => {
+                    if layout.max_block_depth == 0 {
+                        continue;
+                    }
+                    let subtree_layout = AstLayout {
+                        max_block_depth: (0..layout.max_block_depth)
+                            .choose(self.rng)
+                            .unwrap(),
+                        num_blocks: (1..=budget).choose(self.rng).unwrap(),
+                    };
+                    if let Some(loop_ast) = self.sample_loop(&subtree_layout) {
+                        seq.push(loop_ast);
                         budget -= subtree_layout.num_blocks;
                     }
                 }

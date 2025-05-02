@@ -71,7 +71,7 @@ pub struct FunctionBuilder<'program> {
     return_type: Option<Type>,
 }
 
-impl<'program> FunctionBuilder<'program> {
+impl FunctionBuilder<'_> {
     pub fn parameters(&mut self, parameters: &[Variable]) {
         self.parameters.extend_from_slice(parameters);
     }
