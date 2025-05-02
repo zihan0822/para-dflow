@@ -5,3 +5,4 @@ edition.workspace = true
 
 [dependencies]
 slotmap.workspace = true
+bril-rs.workspace = true
