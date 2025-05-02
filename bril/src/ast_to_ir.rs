@@ -45,7 +45,7 @@ fn recursed_ast_to_ir(
 
             *cur_if_else_idx += 1;
             block_builder.add_patched_instr(
-                Instruction::Br(*condition, LabelIdx(0), LabelIdx(0)),
+                Instruction::Br(*condition, LabelIdx::UNDEF, LabelIdx::UNDEF),
                 vec![true_block_label.clone(), false_block_label.clone()],
             );
             fn_builder.seal_block(block_builder);
@@ -59,7 +59,7 @@ fn recursed_ast_to_ir(
                 BasicBlockBuilder::with_label(true_block_label),
             );
             true_block_builder.add_patched_instr(
-                Instruction::Jmp(LabelIdx(0)),
+                Instruction::Jmp(LabelIdx::UNDEF),
                 vec![exit_label.clone()],
             );
             fn_builder.seal_block(true_block_builder);
@@ -73,7 +73,7 @@ fn recursed_ast_to_ir(
                 BasicBlockBuilder::with_label(false_block_label),
             );
             false_block_builder.add_patched_instr(
-                Instruction::Jmp(LabelIdx(0)),
+                Instruction::Jmp(LabelIdx::UNDEF),
                 vec![exit_label.clone()],
             );
             fn_builder.seal_block(false_block_builder);
@@ -102,7 +102,7 @@ fn recursed_ast_to_ir(
             let mut header_block_builder =
                 BasicBlockBuilder::with_label(&header_label);
             header_block_builder.add_patched_instr(
-                Instruction::Br(*condition, LabelIdx(0), LabelIdx(0)),
+                Instruction::Br(*condition, LabelIdx::UNDEF, LabelIdx::UNDEF),
                 vec![body_label.clone(), exit_label.clone()],
             );
             fn_builder.seal_block(header_block_builder);
@@ -116,7 +116,7 @@ fn recursed_ast_to_ir(
                 BasicBlockBuilder::with_label(&body_label),
             );
             body_builder.add_patched_instr(
-                Instruction::Jmp(LabelIdx(0)),
+                Instruction::Jmp(LabelIdx::UNDEF),
                 vec![header_label],
             );
             fn_builder.seal_block(body_builder);

@@ -1,5 +1,12 @@
 use std::ops::Range;
 
+macro_rules! impl_undef {
+    ($($ty: ident),+) => {
+        $(impl $ty {
+            pub const UNDEF: $ty = $ty(u32::MAX);
+        })+
+    }
+}
 pub const NO_INDEX: u32 = u32::MAX;
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 pub struct Variable(pub u32, pub Type);
@@ -9,6 +16,8 @@ pub struct LabelIdx(pub u32);
 pub struct FunctionIdx(pub u32);
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 pub struct StringIdx(pub u32);
+
+impl_undef!(LabelIdx, FunctionIdx, StringIdx);
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Value {

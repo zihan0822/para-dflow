@@ -182,7 +182,7 @@ impl<'a> InstrBuilder<'a> {
                         return Translated::ToResolve(
                             ir::Instruction::Call(
                                 Some(dest),
-                                ir::FunctionIdx(u32::MAX),
+                                ir::FunctionIdx::UNDEF,
                                 args.into_boxed_slice(),
                             ),
                             funcs.clone(),
@@ -220,7 +220,7 @@ impl<'a> InstrBuilder<'a> {
                     .iter()
                     .map(|arg| self.var_map.get(arg.as_str()).copied().unwrap())
                     .collect();
-                let unresolved = ir::LabelIdx(u32::MAX);
+                let unresolved = ir::LabelIdx::UNDEF;
                 match op {
                     bril_rs::EffectOps::Jump => Translated::ToResolve(
                         ir::Instruction::Jmp(unresolved),
@@ -239,7 +239,7 @@ impl<'a> InstrBuilder<'a> {
                     bril_rs::EffectOps::Call => Translated::ToResolve(
                         ir::Instruction::Call(
                             None,
-                            ir::FunctionIdx(u32::MAX),
+                            ir::FunctionIdx::UNDEF,
                             args.into_boxed_slice(),
                         ),
                         funcs.clone(),
