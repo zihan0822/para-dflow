@@ -5,3 +5,6 @@ edition.workspace = true
 authors.workspace = true
 
 [dependencies]
+bril.workspace = true
+baa.workspace = true
+slotmap.workspace = true

@@ -11,3 +11,4 @@ authors = ["Zihan Li", "Ethan Uppal"]
 bril-rs = { git = "https://github.com/sampsyo/bril", rev = "175580e" }
 bril = { path = "bril" }
 slotmap = "1.0.7"
+baa = "0.16.9"
