@@ -1,7 +1,9 @@
+// Copyright (C) 2025 Zihan Li and Ethan Uppal.
+
 use bril::ir::{Instruction, Type, Value, Variable};
 use rand::{
-    Rng,
     distr::{self, Distribution},
+    Rng,
 };
 
 pub struct BrilDist;

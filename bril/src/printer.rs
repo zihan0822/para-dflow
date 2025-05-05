@@ -1,3 +1,5 @@
+// Copyright (C) 2025 Zihan Li and Ethan Uppal.
+
 use std::fmt;
 
 use crate::ir::{Function, Instruction, Program};

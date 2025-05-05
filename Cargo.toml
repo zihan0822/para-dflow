@@ -5,6 +5,7 @@ members = ["bril", "bril-analysis", "bril-fuzzer"]
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
+authors = ["Zihan Li", "Ethan Uppal"]
 
 [workspace.dependencies]
 bril-rs = { git = "https://github.com/sampsyo/bril", rev = "175580e" }

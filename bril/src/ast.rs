@@ -1,3 +1,5 @@
+// Copyright (C) 2025 Zihan Li and Ethan Uppal.
+
 use slotmap::new_key_type;
 
 use crate::ir::{Instruction, Variable};

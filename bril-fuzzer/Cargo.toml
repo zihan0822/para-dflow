@@ -2,6 +2,7 @@
 name = "bril-fuzzer"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
 
 [dependencies]
 bril.workspace = true 

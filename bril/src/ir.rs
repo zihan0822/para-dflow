@@ -1,3 +1,5 @@
+// Copyright (C) 2025 Zihan Li and Ethan Uppal.
+
 use std::ops::Range;
 
 macro_rules! impl_undef {

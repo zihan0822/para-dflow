@@ -1,3 +1,5 @@
+// Copyright (C) 2025 Zihan Li and Ethan Uppal.
+
 use bril::ir::{Instruction, Type, Value, Variable};
 
 pub trait InstrConfig {
