@@ -1,6 +1,6 @@
 // Copyright (C) 2025 Zihan Li and Ethan Uppal.
 
-use slotmap::{new_key_type, SecondaryMap, SlotMap};
+use slotmap::{SecondaryMap, SlotMap, new_key_type};
 use std::ops::Range;
 
 use crate::ir::{

@@ -2,8 +2,8 @@
 
 use bril::ir::{Instruction, Type, Value, Variable};
 use rand::{
-    distr::{self, Distribution},
     Rng,
+    distr::{self, Distribution},
 };
 
 pub struct BrilDist;
