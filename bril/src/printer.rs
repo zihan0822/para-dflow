@@ -38,19 +38,19 @@ impl<'formatter, W: fmt::Write> Printer<'formatter, W> {
 
         writeln!(self.f, "@{}({}){} {{", function.name, args, ret)?;
         for (offset, instruction) in function.instructions.iter().enumerate() {
-            while let Some((_, label_name)) =
-                labels.next_if(|(label_offset, _)| *label_offset == offset)
+            while let Some(label) =
+                labels.next_if(|label| label.offset == offset)
             {
-                writeln!(self.f, ".{label_name}:")?;
+                writeln!(self.f, ".{}:", label.name)?;
             }
             write!(self.f, "\t")?;
             self.print_instruction(program, instruction)?;
         }
         // handle the special case where labels are appended to the end of
         // instructions
-        for &(offset, label_name) in labels {
-            assert_eq!(offset, function.instructions.len());
-            writeln!(self.f, ".{label_name}:")?;
+        for label in labels {
+            assert_eq!(label.offset, function.instructions.len());
+            writeln!(self.f, ".{}:", label.name)?;
         }
         write!(self.f, "}}")
     }

@@ -17,7 +17,7 @@ pub struct StringIdx(pub u32);
 macro_rules! impl_undef {
     ($($ty: ident),+) => {
         $(impl $ty {
-            pub const UNDEF: $ty = $ty(u32::MAX);
+            pub const UNDEF: $ty = $ty(NO_INDEX);
         })+
     }
 }
@@ -93,15 +93,23 @@ pub(crate) struct FunctionInternal {
     pub(crate) return_type: Option<Type>,
 }
 
+pub struct Label<'a> {
+    /// offset has different interpretation in different context
+    /// in Function, offset is relative to the start of function's instruction
+    /// buffer in Program, offset is relative to the start of global
+    /// instruction buffer
+    pub offset: usize,
+    pub name: &'a str,
+    pub idx: LabelIdx,
+}
+
 pub struct Function<'a> {
     /// The subarray of instructions corresponding to this function.
     pub instructions: &'a [Instruction],
     pub name: &'a str,
     pub parameters: &'a [Variable],
-    /// The label starts (first element in the tuple) are the relative (to
-    /// `self.instructions`) offset into function's instruction buffer and
-    /// label name.
-    pub labels: Vec<(usize, &'a str)>,
+    /// sorted in ascending order by offset
+    pub labels: Vec<Label<'a>>,
     pub return_type: Option<Type>,
 }
 
@@ -149,14 +157,13 @@ impl Program {
         let mut labels: Vec<_> = function
             .labels
             .iter()
-            .map(|label_idx| {
-                (
-                    self.get_label_offset(*label_idx) - start,
-                    self.get_label_name(*label_idx),
-                )
+            .map(|label_idx| Label {
+                offset: self.get_label_offset(*label_idx) - start,
+                name: self.get_label_name(*label_idx),
+                idx: *label_idx,
             })
             .collect();
-        labels.sort_by_key(|label| label.0);
+        labels.sort_by_key(|label| label.offset);
         Function {
             instructions: &self.instructions[function.range.clone()],
             name: self.get_string(function.name),
@@ -190,20 +197,23 @@ pub enum FunctionItem<'a> {
 impl Function<'_> {
     /// An iterator over the labels and instructions in this function
     /// interleaved in the correct order.
-    pub fn items_iter<'a>(&'a self) -> impl Iterator<Item = FunctionItem<'a>> {
+    pub fn items_iter(&self) -> impl Iterator<Item = FunctionItem<'_>> {
         let mut labels = self.labels.iter().enumerate().peekable();
         let mut instructions = self.instructions.iter().enumerate().peekable();
 
         iter::from_fn(move || {
-            let i = instructions.peek()?.0;
-            if labels
-                .peek()
-                .map(|(_, (label_idx, _))| *label_idx == i)
-                .unwrap_or(false)
-            {
-                Some(FunctionItem::Label(LabelIdx(labels.next()?.0 as u32)))
+            if let Some(&(i, _)) = instructions.peek() {
+                if labels
+                    .peek()
+                    .map(|(_, label)| label.offset == i)
+                    .unwrap_or(false)
+                {
+                    Some(FunctionItem::Label(labels.next()?.1.idx))
+                } else {
+                    Some(FunctionItem::Instruction(instructions.next()?.1))
+                }
             } else {
-                Some(FunctionItem::Instruction(instructions.next()?.1))
+                Some(FunctionItem::Label(labels.next()?.1.idx))
             }
         })
     }
