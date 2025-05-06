@@ -93,6 +93,7 @@ pub(crate) struct FunctionInternal {
     pub(crate) return_type: Option<Type>,
 }
 
+#[derive(Debug, Copy, Clone)]
 pub struct Label<'a> {
     /// offset has different interpretation in different context
     /// in Function, offset is relative to the start of function's instruction
@@ -103,6 +104,13 @@ pub struct Label<'a> {
     pub idx: LabelIdx,
 }
 
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct FunctionPrototype {
+    pub name: String,
+    pub parameters: Vec<Variable>,
+    pub return_type: Option<Type>
+}
+
 pub struct Function<'a> {
     /// The subarray of instructions corresponding to this function.
     pub instructions: &'a [Instruction],
@@ -111,6 +119,16 @@ pub struct Function<'a> {
     /// sorted in ascending order by offset
     pub labels: Vec<Label<'a>>,
     pub return_type: Option<Type>,
+}
+
+impl Function<'_> {
+    pub fn prototype(&self) -> FunctionPrototype {
+        FunctionPrototype {
+            name: self.name.to_string(),
+            parameters: self.parameters.to_vec(),
+            return_type: self.return_type
+        }
+    }
 }
 
 #[derive(Debug, Default, PartialEq, Eq, Clone)]
