@@ -1,0 +1,9 @@
+[package]
+name = "bril-cfg"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+bril.workspace = true
+slotmap.workspace = true

@@ -1,6 +1,18 @@
 // Copyright (C) 2025 Zihan Li and Ethan Uppal.
 
-use std::ops::Range;
+use std::{iter, ops::Range};
+
+pub const NO_INDEX: u32 = u32::MAX;
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+pub struct Variable(pub u32, pub Type);
+/// A global index into the label array.
+#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+pub struct LabelIdx(pub u32);
+#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+pub struct FunctionIdx(pub u32);
+#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+pub struct StringIdx(pub u32);
 
 macro_rules! impl_undef {
     ($($ty: ident),+) => {
@@ -9,15 +21,6 @@ macro_rules! impl_undef {
         })+
     }
 }
-pub const NO_INDEX: u32 = u32::MAX;
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
-pub struct Variable(pub u32, pub Type);
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
-pub struct LabelIdx(pub u32);
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
-pub struct FunctionIdx(pub u32);
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
-pub struct StringIdx(pub u32);
 
 impl_undef!(LabelIdx, FunctionIdx, StringIdx);
 
@@ -95,7 +98,9 @@ pub struct Function<'a> {
     pub instructions: &'a [Instruction],
     pub name: &'a str,
     pub parameters: &'a [Variable],
-    /// offset into function's instruction buffer and label name
+    /// The label starts (first element in the tuple) are the relative (to
+    /// `self.instructions`) offset into function's instruction buffer and
+    /// label name.
     pub labels: Vec<(usize, &'a str)>,
     pub return_type: Option<Type>,
 }
@@ -173,5 +178,33 @@ impl Program {
     ) -> FunctionIdx {
         self.functions.push(function);
         FunctionIdx((self.functions.len() - 1) as u32)
+    }
+}
+
+/// See [`Function::items_iter`].
+pub enum FunctionItem<'a> {
+    Instruction(&'a Instruction),
+    Label(LabelIdx),
+}
+
+impl Function<'_> {
+    /// An iterator over the labels and instructions in this function
+    /// interleaved in the correct order.
+    pub fn items_iter<'a>(&'a self) -> impl Iterator<Item = FunctionItem<'a>> {
+        let mut labels = self.labels.iter().enumerate().peekable();
+        let mut instructions = self.instructions.iter().enumerate().peekable();
+
+        iter::from_fn(move || {
+            let i = instructions.peek()?.0;
+            if labels
+                .peek()
+                .map(|(_, (label_idx, _))| *label_idx == i)
+                .unwrap_or(false)
+            {
+                Some(FunctionItem::Label(LabelIdx(labels.next()?.0 as u32)))
+            } else {
+                Some(FunctionItem::Instruction(instructions.next()?.1))
+            }
+        })
     }
 }

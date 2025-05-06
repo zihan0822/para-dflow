@@ -38,6 +38,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "bril-cfg"
+version = "0.1.0"
+dependencies = [
+ "bril",
+ "slotmap",
+]
+
+[[package]]
 name = "bril-fuzzer"
 version = "0.1.0"
 dependencies = [
