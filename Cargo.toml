@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["bril", "bril-analysis", "bril-cfg", "bril-fuzzer"]
+members = [ "bril", "bril-analysis", "bril-cfg", "bril-fuzzer"]
 
 [workspace.package]
 version = "0.1.0"
@@ -10,5 +10,6 @@ authors = ["Zihan Li", "Ethan Uppal"]
 [workspace.dependencies]
 bril-rs = { git = "https://github.com/sampsyo/bril", rev = "175580e" }
 bril = { path = "bril" }
+bril-cfg = { path = "bril-cfg" }
+bril-analysis = { path = "bril-analysis" }
 slotmap = "1.0.7"
-baa = "0.16.9"

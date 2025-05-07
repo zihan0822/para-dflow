@@ -1,10 +1,12 @@
-// // Copyright (C) 2025 Zihan Li and Ethan Uppal.
+// Copyright (C) 2025 Zihan Li and Ethan Uppal.
+pub mod analysis;
 pub mod scc;
+
 use fixedbitset::FixedBitSet;
 use std::collections::VecDeque;
 
 use bril::builder::BasicBlockIdx;
-use bril_cfg::{BasicBlock, Cfg};
+use bril_cfg::Cfg;
 use slotmap::SecondaryMap;
 
 pub enum Direction {
@@ -17,7 +19,7 @@ pub fn solve_dataflow(
     direction: Direction,
     entry_inputs: FixedBitSet,
     merge: impl Fn(FixedBitSet, &FixedBitSet) -> FixedBitSet,
-    transfer: impl Fn(&BasicBlock, &FixedBitSet) -> FixedBitSet,
+    transfer: impl Fn(BasicBlockIdx, FixedBitSet) -> FixedBitSet,
 ) -> SecondaryMap<BasicBlockIdx, FixedBitSet> {
     let postorder_traversal = construct_postorder(cfg);
     let mut blocks = match direction {
@@ -46,7 +48,7 @@ pub fn solve_dataflow(
             }
         }
 
-        let new_out = transfer(&cfg.vertices[current], &initial_in);
+        let new_out = transfer(current, initial_in);
         if !new_out.eq(&solution[current]) {
             solution[current] = new_out;
             match direction {
