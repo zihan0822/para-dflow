@@ -6,6 +6,6 @@ authors.workspace = true
 
 [dependencies]
 bril.workspace = true
-baa.workspace = true
 slotmap.workspace = true
 bril-cfg.workspace = true
+fixedbitset = "0.5.7"
