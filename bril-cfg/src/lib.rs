@@ -65,7 +65,7 @@ impl Cfg<'_> {
         }
     }
     pub fn predecessors(&self, current: BasicBlockIdx) -> Vec<BasicBlockIdx> {
-        self.rev_edges[current].clone()
+        self.rev_edges.get(current).cloned().unwrap_or_default()
     }
 }
 
