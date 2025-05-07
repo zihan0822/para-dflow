@@ -51,6 +51,21 @@ pub struct Cfg<'program> {
     pub rev_edges: SecondaryMap<BasicBlockIdx, Vec<BasicBlockIdx>>,
 }
 
+impl Cfg<'_> {
+    pub fn successors(&self, current: BasicBlockIdx) -> Vec<BasicBlockIdx> {
+        match &self.edges[current] {
+            Exit::Unconditional(successor) => vec![*successor],
+            Exit::Conditional { if_true, if_false } => {
+                vec![*if_true, *if_false]
+            }
+            Exit::Return => vec![],
+        }
+    }
+    pub fn predecessors(&self, current: BasicBlockIdx) -> Vec<BasicBlockIdx> {
+        self.rev_edges[current].clone()
+    }
+}
+
 pub struct CfgBuilder<'a, 'program> {
     cfg: Cfg<'program>,
     function: &'a Function<'program>,
