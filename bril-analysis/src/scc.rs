@@ -2,6 +2,7 @@
 use bril::builder::BasicBlockIdx;
 use bril_cfg::Cfg;
 use slotmap::{SecondaryMap, SlotMap, new_key_type};
+use std::collections::HashSet;
 
 new_key_type! {pub struct ComponentIdx; }
 
@@ -24,6 +25,7 @@ impl<'program> CondensedCfg<'program> {
             lowest: SecondaryMap<BasicBlockIdx, usize>,
             preorder: SecondaryMap<BasicBlockIdx, usize>,
             stack: Vec<BasicBlockIdx>,
+            in_stack: HashSet<BasicBlockIdx>,
             components: SlotMap<ComponentIdx, Component>,
         }
 
@@ -33,6 +35,7 @@ impl<'program> CondensedCfg<'program> {
             lowest: SecondaryMap::with_capacity(cfg.vertices.capacity()),
             preorder: SecondaryMap::with_capacity(cfg.vertices.capacity()),
             stack: vec![],
+            in_stack: HashSet::new(),
             components: SlotMap::with_key(),
         };
 
@@ -46,9 +49,10 @@ impl<'program> CondensedCfg<'program> {
                 let mut lowest = self.val;
                 self.val += 1;
                 self.stack.push(current);
+                self.in_stack.insert(current);
 
                 for successor in self.cfg.successors(current) {
-                    if self.stack.iter().any(|v| successor.eq(v)) {
+                    if self.in_stack.contains(&successor) {
                         lowest = lowest.min(self.preorder[successor]);
                     } else if !self.preorder.contains_key(successor) {
                         self.tarjan(successor);
@@ -60,6 +64,7 @@ impl<'program> CondensedCfg<'program> {
                     let mut vertices = vec![];
                     while let Some(v) = self.stack.pop() {
                         vertices.push(v);
+                        self.in_stack.remove(&v);
                         if v == current {
                             break;
                         }
