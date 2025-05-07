@@ -28,6 +28,9 @@ pub struct BasicBlock<'program> {
     /// This includes the exit instruction if one is present (e.g., a
     /// `br` or `jmp`).
     pub instructions: &'program [Instruction],
+    /// offset of the start of instructions relative to function's instructions
+    /// buffer
+    pub offset: usize,
     pub is_entry: bool,
     pub exit: LabeledExit,
 }
@@ -133,6 +136,7 @@ impl<'a, 'program> CfgBuilder<'a, 'program> {
         let mut current_block = mem::take(&mut self.current_block);
         current_block.instructions =
             &self.function.instructions[self.current_range.clone()];
+        current_block.offset = self.current_range.start;
 
         let block_idx = self.cfg.vertices.insert(current_block);
         self.current_range = self.current_range.end..self.current_range.end;
