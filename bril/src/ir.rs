@@ -108,7 +108,7 @@ pub struct Label<'a> {
 pub struct FunctionPrototype {
     pub name: String,
     pub parameters: Vec<Variable>,
-    pub return_type: Option<Type>
+    pub return_type: Option<Type>,
 }
 
 pub struct Function<'a> {
@@ -126,7 +126,7 @@ impl Function<'_> {
         FunctionPrototype {
             name: self.name.to_string(),
             parameters: self.parameters.to_vec(),
-            return_type: self.return_type
+            return_type: self.return_type,
         }
     }
 }

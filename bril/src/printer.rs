@@ -52,10 +52,10 @@ impl<'formatter, W: fmt::Write> Printer<'formatter, W> {
             assert_eq!(label.offset, function.instructions.len());
             writeln!(self.f, ".{}:", label.name)?;
         }
-        write!(self.f, "}}")
+        writeln!(self.f, "}}")
     }
 
-    fn print_instruction(
+    pub fn print_instruction(
         &mut self,
         program: &Program,
         instruction: &Instruction,
