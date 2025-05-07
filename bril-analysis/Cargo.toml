@@ -8,3 +8,4 @@ authors.workspace = true
 bril.workspace = true
 baa.workspace = true
 slotmap.workspace = true
+bril-cfg.workspace = true

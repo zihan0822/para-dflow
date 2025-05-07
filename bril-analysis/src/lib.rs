@@ -1,4 +1,5 @@
 // // Copyright (C) 2025 Zihan Li and Ethan Uppal.
+pub mod scc;
 //
 // use baa::{BitVecValue, BitVecValueRef};
 // use bril::{builder::BasicBlockIdx, ir::Function};
