@@ -1,6 +1,9 @@
 use super::prelude::*;
 use std::collections::HashMap;
 
+/// ones in the returned bitset should be interpreted as offset of the
+/// instruction that defines the reaching definition relative to function's
+/// instruction buffer
 pub fn reaching_def(cfg: &Cfg) -> SecondaryMap<BasicBlockIdx, FixedBitSet> {
     let (kill_set, gen_set) = (find_kill_set(cfg), find_gen_set(cfg));
     // function parameters are not tracked
