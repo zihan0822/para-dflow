@@ -134,6 +134,10 @@ impl<'a, 'program> CfgBuilder<'a, 'program> {
     pub fn finish_current_and_start_new_block(&mut self) {
         let current_label = self.current_block.label;
         let mut current_block = mem::take(&mut self.current_block);
+        if self.entry_is_init && current_block.label.is_none() {
+            self.current_range = self.current_range.end..self.current_range.end;
+            return;
+        }
         current_block.instructions =
             &self.function.instructions[self.current_range.clone()];
         current_block.offset = self.current_range.start;
