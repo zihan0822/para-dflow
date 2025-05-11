@@ -9,6 +9,8 @@ new_key_type! {pub struct ComponentIdx; }
 pub struct Component {
     pub vertices: Vec<BasicBlockIdx>,
     pub entry: BasicBlockIdx,
+    /// count of back edges within the component
+    pub num_back_edges: usize,
 }
 
 pub struct CondensedCfg<'program> {
@@ -24,6 +26,7 @@ impl<'program> CondensedCfg<'program> {
             val: usize,
             lowest: SecondaryMap<BasicBlockIdx, usize>,
             preorder: SecondaryMap<BasicBlockIdx, usize>,
+            back_edges_cnt: SecondaryMap<BasicBlockIdx, usize>,
             stack: Vec<BasicBlockIdx>,
             in_stack: HashSet<BasicBlockIdx>,
             components: SlotMap<ComponentIdx, Component>,
@@ -34,6 +37,9 @@ impl<'program> CondensedCfg<'program> {
             val: 0,
             lowest: SecondaryMap::with_capacity(cfg.vertices.capacity()),
             preorder: SecondaryMap::with_capacity(cfg.vertices.capacity()),
+            back_edges_cnt: SecondaryMap::with_capacity(
+                cfg.vertices.capacity(),
+            ),
             stack: vec![],
             in_stack: HashSet::new(),
             components: SlotMap::with_key(),
@@ -53,6 +59,11 @@ impl<'program> CondensedCfg<'program> {
 
                 for successor in self.cfg.successors(current) {
                     if self.in_stack.contains(&successor) {
+                        *self
+                            .back_edges_cnt
+                            .entry(successor)
+                            .unwrap()
+                            .or_default() += 1;
                         lowest = lowest.min(self.preorder[successor]);
                     } else if !self.preorder.contains_key(successor) {
                         self.tarjan(successor);
@@ -62,8 +73,12 @@ impl<'program> CondensedCfg<'program> {
                 self.lowest.insert(current, lowest);
                 if lowest == self.preorder[current] {
                     let mut vertices = vec![];
+                    let mut num_back_edges = 0;
                     while let Some(v) = self.stack.pop() {
                         vertices.push(v);
+                        if let Some(cnt) = self.back_edges_cnt.get(v) {
+                            num_back_edges += cnt;
+                        }
                         self.in_stack.remove(&v);
                         if v == current {
                             break;
@@ -72,6 +87,7 @@ impl<'program> CondensedCfg<'program> {
                     self.components.insert(Component {
                         entry: current,
                         vertices,
+                        num_back_edges,
                     });
                 }
             }
