@@ -114,28 +114,18 @@ impl<R: Rng + ?Sized> Context<'_, R> {
     /// this might return None, if the required operands are not be sampled
     /// from live variables
     pub fn sample_instr(&mut self) -> Option<AstIdx> {
-        enum ConstOrValue {
-            Const,
-            Value,
-        }
-        let mut instr = match sample_one_by_weights(
-            &[ConstOrValue::Const, ConstOrValue::Value],
-            &[0.25, 0.75],
-            self.rng,
-        ) {
-            ConstOrValue::Const => {
-                <BrilDist as Distribution<FuzzedConstInstr>>::sample(
-                    &BrilDist, self.rng,
-                )
-                .0
-            }
-            ConstOrValue::Value => {
-                <BrilDist as Distribution<FuzzedValueInstr>>::sample(
-                    &BrilDist, self.rng,
-                )
-                .0
-            }
+        let mut instr = if self.rng.random_bool(0.25) {
+            <BrilDist as Distribution<FuzzedConstInstr>>::sample(
+                &BrilDist, self.rng,
+            )
+            .0
+        } else {
+            <BrilDist as Distribution<FuzzedValueInstr>>::sample(
+                &BrilDist, self.rng,
+            )
+            .0
         };
+
         if !matches!(instr, Instruction::Const(..)) {
             let mut operands = vec![];
             for _ in 0..instr.num_operands() {
@@ -144,17 +134,10 @@ impl<R: Rng + ?Sized> Context<'_, R> {
             instr.config_operands(operands);
         }
 
-        enum AllocOrShadow {
-            Alloc,
-            Shadow,
-        }
-        let dest = match sample_one_by_weights(
-            &[AllocOrShadow::Alloc, AllocOrShadow::Shadow],
-            &[0.75, 0.25],
-            self.rng,
-        ) {
-            AllocOrShadow::Alloc => self.alloc_next_var(instr.dest_ty()),
-            AllocOrShadow::Shadow => self.sample_var_of_ty(instr.dest_ty())?,
+        let dest = if self.rng.random_bool(0.25) {
+            self.sample_var_of_ty(instr.dest_ty())?
+        } else {
+            self.alloc_next_var(instr.dest_ty())
         };
 
         instr.config_dest(dest);
