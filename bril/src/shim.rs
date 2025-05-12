@@ -138,7 +138,12 @@ impl<'a> InstrBuilder<'a> {
             } => {
                 let args: Vec<_> = args
                     .iter()
-                    .map(|arg| self.var_map.get(arg.as_str()).copied().unwrap())
+                    .map(|arg| {
+                        self.var_map
+                            .get(arg.as_str())
+                            .copied()
+                            .unwrap_or_else(|| panic!("'{arg}' not defined"))
+                    })
                     .collect();
                 let dest =
                     self.variable_or_next(dest.as_str(), op_type.clone());
@@ -220,7 +225,12 @@ impl<'a> InstrBuilder<'a> {
             } => {
                 let args: Vec<_> = args
                     .iter()
-                    .map(|arg| self.var_map.get(arg.as_str()).copied().unwrap())
+                    .map(|arg| {
+                        self.var_map
+                            .get(arg.as_str())
+                            .copied()
+                            .unwrap_or_else(|| panic!("'{arg}' not defined"))
+                    })
                     .collect();
                 let unresolved = ir::LabelIdx::UNDEF;
                 match op {
