@@ -143,7 +143,20 @@ impl<R: Rng + ?Sized> Context<'_, R> {
             }
             instr.config_operands(operands);
         }
-        let dest = self.alloc_next_var(instr.dest_ty());
+
+        enum AllocOrShadow {
+            Alloc,
+            Shadow,
+        }
+        let dest = match sample_one_by_weights(
+            &[AllocOrShadow::Alloc, AllocOrShadow::Shadow],
+            &[0.75, 0.25],
+            self.rng,
+        ) {
+            AllocOrShadow::Alloc => self.alloc_next_var(instr.dest_ty()),
+            AllocOrShadow::Shadow => self.sample_var_of_ty(instr.dest_ty())?,
+        };
+
         instr.config_dest(dest);
         Some(self.ast.insert(Ast::Instruction(instr)))
     }
