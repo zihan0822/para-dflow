@@ -64,10 +64,32 @@ where
         current: ComponentIdx,
         dependencies_left: &'scope DashMap<ComponentIdx, usize>,
     ) {
-        let initial_in = self
-            .solution
-            .get(&self.condensed_cfg.components[current].entry)
-            .map_or(self.entry_inputs.clone(), |v| v.clone());
+        let component_entry_block =
+            self.condensed_cfg.components[current].entry;
+        let component = &self.condensed_cfg.components[current];
+        let initial_in = {
+            let predecessors: Vec<_> = match self.direction {
+                Direction::Forward => self
+                    .condensed_cfg
+                    .cfg
+                    .predecessors(component_entry_block)
+                    .into_iter()
+                    .filter(|&pred| !component.contains(pred))
+                    .collect(),
+                Direction::Backward => self
+                    .condensed_cfg
+                    .cfg
+                    .successors(component_entry_block)
+                    .into_iter()
+                    .filter(|&succ| !component.contains(succ))
+                    .collect(),
+            };
+            predecessors
+                .iter()
+                .map(|pred| self.solution.get(pred).unwrap().clone())
+                .reduce(|in1, in2| (self.merge)(in1, &in2))
+                .unwrap_or(self.entry_inputs.clone())
+        };
 
         // sequential dataflow
         let partial_solution = sequential::solve_dataflow(

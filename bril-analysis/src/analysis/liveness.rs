@@ -5,7 +5,7 @@ use std::collections::HashSet;
 /// variable variables are zero-indexed per function
 pub fn liveness(cfg: &Cfg) -> SecondaryMap<BasicBlockIdx, FixedBitSet> {
     let (kill_set, gen_set) = (find_kill_set(cfg), find_gen_set(cfg));
-    solve_dataflow(
+    sequential::solve_dataflow(
         cfg,
         &(),
         Direction::Backward,
@@ -19,6 +19,28 @@ pub fn liveness(cfg: &Cfg) -> SecondaryMap<BasicBlockIdx, FixedBitSet> {
             merged_in.union_with(&gen_set[block_idx]);
             merged_in
         },
+    )
+}
+
+pub fn liveness_para(
+    cfg: &Cfg,
+    num_threads: usize,
+) -> DashMap<BasicBlockIdx, FixedBitSet> {
+    let (kill_set, gen_set) = (find_kill_set(cfg), find_gen_set(cfg));
+    parallel::solve_dataflow(
+        cfg,
+        Direction::Backward,
+        FixedBitSet::new(),
+        |mut in1, in2| {
+            in1.union_with(in2);
+            in1
+        },
+        |block_idx, mut merged_in| {
+            merged_in.difference_with(&kill_set[block_idx]);
+            merged_in.union_with(&gen_set[block_idx]);
+            merged_in
+        },
+        num_threads,
     )
 }
 
