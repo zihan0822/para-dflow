@@ -3,7 +3,7 @@
 use dashmap::DashMap;
 use fixedbitset::FixedBitSet;
 use rayon::Scope;
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 
 use bril::builder::BasicBlockIdx;
 use bril_cfg::Cfg;
@@ -86,7 +86,7 @@ where
             };
             predecessors
                 .iter()
-                .map(|pred| self.solution.get(pred).unwrap().clone())
+                .filter_map(|pred| self.solution.get(pred).map(|v| v.clone()))
                 .reduce(|in1, in2| (self.merge)(in1, &in2))
                 .unwrap_or(self.entry_inputs.clone())
         };
@@ -145,14 +145,14 @@ where
                 .insert(component_idx, self.dependencies(component_idx).len());
         }
 
-        let mut starting_set = vec![];
+        let mut starting_set = HashSet::new();
         match self.direction {
             Direction::Forward => {
-                starting_set.push(self.condensed_cfg.entry);
+                starting_set.insert(self.condensed_cfg.entry);
             }
             Direction::Backward => {
                 let mut bfs = VecDeque::from_iter([self.condensed_cfg.entry]);
-                let mut frontier = vec![];
+                let mut frontier = HashSet::new();
                 while let Some(next) = bfs.pop_front() {
                     let neighbors = self
                         .condensed_cfg
@@ -161,7 +161,7 @@ where
                         .cloned()
                         .unwrap_or_default();
                     if neighbors.is_empty() {
-                        frontier.push(next);
+                        frontier.insert(next);
                     } else {
                         for neighbor in neighbors {
                             bfs.push_back(neighbor);
