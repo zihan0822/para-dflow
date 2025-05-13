@@ -10,9 +10,8 @@ use bril_cfg::Cfg;
 use slotmap::SecondaryMap;
 
 use crate::{
-    construct_postorder,
+    Direction, construct_postorder,
     scc::{ComponentIdx, CondensedCfg},
-    Direction,
 };
 
 pub fn solve_dataflow(
@@ -92,20 +91,22 @@ pub fn solve_dataflow(
 
     // TODO: store results of dataflow per component in some DashMap
 
-    fn worker(
-        scope: Scope,
+    fn worker<'scope>(
+        scope: &Scope<'scope>,
         starting_component: ComponentIdx,
-        condensed_cfg_edges: &SecondaryMap<ComponentIdx, Vec<ComponentIdx>>,
+        condensed_cfg_edges: &'scope SecondaryMap<
+            ComponentIdx,
+            Vec<ComponentIdx>,
+        >,
         dependencies_left: Arc<DashMap<ComponentIdx, usize>>,
     ) {
         // sequential dataflow
 
-        for dependent in condensed_cfg_edges
+        for &dependent in condensed_cfg_edges
             .get(starting_component)
             .unwrap_or(&vec![])
         {
-            let mut remaining =
-                dependencies_left.entry(*dependent).or_default();
+            let mut remaining = dependencies_left.entry(dependent).or_default();
             if *remaining > 0 {
                 *remaining -= 1;
                 if *remaining == 0 {
@@ -113,7 +114,7 @@ pub fn solve_dataflow(
                     scope.spawn(move |scope| {
                         worker(
                             scope,
-                            *dependent,
+                            dependent,
                             condensed_cfg_edges,
                             dependencies_left,
                         );
@@ -124,17 +125,17 @@ pub fn solve_dataflow(
     }
 
     let condensed_cfg_edges = &condensed_cfg.edges;
-    for starting_component in starting_set {
-        let mut dependencies_left = dependencies_left.clone();
-        pool.scope(move |scope| {
+    pool.scope(move |scope| {
+        for starting_component in starting_set {
+            let mut dependencies_left = dependencies_left.clone();
             worker(
                 scope,
                 starting_component,
                 condensed_cfg_edges,
                 dependencies_left,
             );
-        });
-    }
+        }
+    });
 
     todo!()
 }
