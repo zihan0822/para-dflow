@@ -104,10 +104,11 @@ where
         for (block_idx, v) in partial_solution {
             self.solution.insert(block_idx, v);
         }
-
-        for &dependent in
-            self.condensed_cfg.edges.get(current).unwrap_or(&vec![])
-        {
+        let dependents = match self.direction {
+            Direction::Forward => self.condensed_cfg.successors(current),
+            Direction::Backward => self.condensed_cfg.predecessors(current),
+        };
+        for dependent in dependents {
             let mut remaining = dependencies_left.entry(dependent).or_default();
             if *remaining > 0 {
                 *remaining -= 1;

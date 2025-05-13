@@ -28,6 +28,14 @@ pub struct CondensedCfg<'cfg, 'program> {
 }
 
 impl<'cfg, 'program> CondensedCfg<'cfg, 'program> {
+    pub fn successors(&self, component: ComponentIdx) -> Vec<ComponentIdx> {
+        self.edges.get(component).cloned().unwrap_or_default()
+    }
+
+    pub fn predecessors(&self, component: ComponentIdx) -> Vec<ComponentIdx> {
+        self.rev_edges.get(component).cloned().unwrap_or_default()
+    }
+
     pub fn intra_comp_edges(
         &self,
         comp_idx: ComponentIdx,
