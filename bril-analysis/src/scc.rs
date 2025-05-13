@@ -1,7 +1,7 @@
 // Copyright (C) 2025 Zihan Li and Ethan Uppal.
 use bril::builder::BasicBlockIdx;
 use bril_cfg::Cfg;
-use slotmap::{SecondaryMap, SlotMap, new_key_type};
+use slotmap::{new_key_type, SecondaryMap, SlotMap};
 use std::collections::HashSet;
 
 new_key_type! {pub struct ComponentIdx; }
@@ -19,14 +19,14 @@ impl Component {
     }
 }
 
-pub struct CondensedCfg<'program> {
-    pub cfg: Cfg<'program>,
+pub struct CondensedCfg<'cfg, 'program> {
+    pub cfg: &'cfg Cfg<'program>,
     pub entry: ComponentIdx,
     pub components: SlotMap<ComponentIdx, Component>,
     pub edges: SecondaryMap<ComponentIdx, Vec<ComponentIdx>>,
 }
 
-impl<'program> CondensedCfg<'program> {
+impl<'cfg, 'program> CondensedCfg<'cfg, 'program> {
     pub fn intra_comp_edges(
         &self,
         comp_idx: ComponentIdx,
@@ -55,7 +55,7 @@ impl<'program> CondensedCfg<'program> {
     }
 
     /// tarjan algorithm for constructing strongly connected components
-    pub fn from_cfg(cfg: Cfg<'program>) -> CondensedCfg<'program> {
+    pub fn from_cfg(cfg: &'cfg Cfg<'program>) -> CondensedCfg<'cfg, 'program> {
         struct Visitor<'a, 'program> {
             cfg: &'a Cfg<'program>,
             val: usize,

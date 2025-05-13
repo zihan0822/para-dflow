@@ -16,7 +16,7 @@ pub fn solve_dataflow(
     merge: impl Fn(FixedBitSet, &FixedBitSet) -> FixedBitSet,
     transfer: impl Fn(BasicBlockIdx, FixedBitSet) -> FixedBitSet,
 ) -> SecondaryMap<BasicBlockIdx, FixedBitSet> {
-    let postorder_traversal = construct_postorder(cfg);
+    let postorder_traversal = construct_postorder(cfg, &());
     let mut blocks = match direction {
         Direction::Forward => {
             VecDeque::from_iter(postorder_traversal.into_iter().rev())
