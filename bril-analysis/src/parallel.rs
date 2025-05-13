@@ -3,53 +3,111 @@
 use dashmap::DashMap;
 use fixedbitset::FixedBitSet;
 use rayon::Scope;
-use std::{collections::VecDeque, sync::Arc};
+use std::collections::VecDeque;
 
 use bril::builder::BasicBlockIdx;
 use bril_cfg::Cfg;
-use slotmap::SecondaryMap;
 
 use crate::{
-    Direction, construct_postorder,
+    Direction,
     scc::{ComponentIdx, CondensedCfg},
+    sequential,
 };
 
 pub fn solve_dataflow(
     cfg: &Cfg,
     direction: Direction,
     entry_inputs: FixedBitSet,
-    merge: impl Fn(FixedBitSet, &FixedBitSet) -> FixedBitSet,
-    transfer: impl Fn(BasicBlockIdx, FixedBitSet) -> FixedBitSet,
+    merge: impl Fn(FixedBitSet, &FixedBitSet) -> FixedBitSet + Sync,
+    transfer: impl Fn(BasicBlockIdx, FixedBitSet) -> FixedBitSet + Sync,
     threads: usize,
-) -> SecondaryMap<BasicBlockIdx, FixedBitSet> {
-    // this will be on a per component basis:
-    // let postorder_traversal = construct_postorder(cfg);
-    // let blocks = match direction {
-    //     Direction::Forward => {
-    //         VecDeque::from_iter(postorder_traversal.into_iter().rev())
-    //     }
-    //     Direction::Backward => VecDeque::from_iter(postorder_traversal),
-    // };
+) -> DashMap<BasicBlockIdx, FixedBitSet> {
+    let solver = ParallelSolver {
+        condensed_cfg: CondensedCfg::from_cfg(cfg),
+        pool: rayon::ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .build()
+            .unwrap(),
+        entry_inputs,
+        direction,
+        merge,
+        transfer,
+        solution: DashMap::new(),
+    };
 
-    let condensed_cfg = CondensedCfg::from_cfg(cfg);
+    solver.solve();
+    solver.solution
+}
 
-    let pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(threads)
-        .build()
-        .unwrap();
+struct ParallelSolver<'cfg, M, T>
+where
+    M: Fn(FixedBitSet, &FixedBitSet) -> FixedBitSet + Sync,
+    T: Fn(BasicBlockIdx, FixedBitSet) -> FixedBitSet + Sync,
+{
+    condensed_cfg: CondensedCfg<'cfg, 'cfg>,
+    pool: rayon::ThreadPool,
+    entry_inputs: FixedBitSet,
+    direction: Direction,
+    merge: M,
+    transfer: T,
+    solution: DashMap<BasicBlockIdx, FixedBitSet>,
+}
 
-    fn dependencies(
-        condensed_cfg: &CondensedCfg,
-        direction: Direction,
+impl<M, T> ParallelSolver<'_, M, T>
+where
+    M: Fn(FixedBitSet, &FixedBitSet) -> FixedBitSet + Sync,
+    T: Fn(BasicBlockIdx, FixedBitSet) -> FixedBitSet + Sync,
+{
+    fn worker<'scope, 'a: 'scope>(
+        &'a self,
+        scope: &Scope<'scope>,
         current: ComponentIdx,
-    ) -> Vec<ComponentIdx> {
-        match direction {
-            Direction::Forward => condensed_cfg
+        dependencies_left: &'scope DashMap<ComponentIdx, usize>,
+    ) {
+        let initial_in = self
+            .solution
+            .get(&self.condensed_cfg.components[current].entry)
+            .map_or(self.entry_inputs.clone(), |v| v.clone());
+
+        // sequential dataflow
+        let partial_solution = sequential::solve_dataflow(
+            &self.condensed_cfg.components[current],
+            &self.condensed_cfg,
+            self.direction,
+            initial_in,
+            &self.merge,
+            &self.transfer,
+        );
+
+        for (block_idx, v) in partial_solution {
+            self.solution.insert(block_idx, v);
+        }
+
+        for &dependent in
+            self.condensed_cfg.edges.get(current).unwrap_or(&vec![])
+        {
+            let mut remaining = dependencies_left.entry(dependent).or_default();
+            if *remaining > 0 {
+                *remaining -= 1;
+                if *remaining == 0 {
+                    scope.spawn(move |scope| {
+                        self.worker(scope, dependent, dependencies_left);
+                    });
+                }
+            }
+        }
+    }
+
+    fn dependencies(&self, current: ComponentIdx) -> Vec<ComponentIdx> {
+        match self.direction {
+            Direction::Forward => self
+                .condensed_cfg
                 .rev_edges
                 .get(current)
                 .cloned()
                 .unwrap_or_default(),
-            Direction::Backward => condensed_cfg
+            Direction::Backward => self
+                .condensed_cfg
                 .edges
                 .get(current)
                 .cloned()
@@ -57,85 +115,46 @@ pub fn solve_dataflow(
         }
     }
 
-    let mut dependencies_left = DashMap::new();
-    for component_idx in condensed_cfg.components.keys() {
-        dependencies_left.insert(
-            component_idx,
-            dependencies(&condensed_cfg, direction, component_idx).len(),
-        );
-    }
-    let mut dependencies_left = Arc::new(dependencies_left);
-
-    let mut starting_set = vec![];
-    match direction {
-        Direction::Forward => {
-            starting_set.push(condensed_cfg.entry);
+    fn solve(&self) {
+        let dependencies_left = DashMap::new();
+        for component_idx in self.condensed_cfg.components.keys() {
+            dependencies_left
+                .insert(component_idx, self.dependencies(component_idx).len());
         }
-        Direction::Backward => {
-            let mut bfs = VecDeque::from_iter([condensed_cfg.entry]);
-            let mut frontier = vec![];
-            while let Some(next) = bfs.pop_front() {
-                let neighbors =
-                    condensed_cfg.edges.get(next).cloned().unwrap_or_default();
-                if neighbors.is_empty() {
-                    frontier.push(next);
-                } else {
-                    for neighbor in neighbors {
-                        bfs.push_back(neighbor);
+
+        let mut starting_set = vec![];
+        match self.direction {
+            Direction::Forward => {
+                starting_set.push(self.condensed_cfg.entry);
+            }
+            Direction::Backward => {
+                let mut bfs = VecDeque::from_iter([self.condensed_cfg.entry]);
+                let mut frontier = vec![];
+                while let Some(next) = bfs.pop_front() {
+                    let neighbors = self
+                        .condensed_cfg
+                        .edges
+                        .get(next)
+                        .cloned()
+                        .unwrap_or_default();
+                    if neighbors.is_empty() {
+                        frontier.push(next);
+                    } else {
+                        for neighbor in neighbors {
+                            bfs.push_back(neighbor);
+                        }
                     }
                 }
-            }
-            starting_set = frontier;
-        }
-    }
-
-    // TODO: store results of dataflow per component in some DashMap
-
-    fn worker<'scope>(
-        scope: &Scope<'scope>,
-        starting_component: ComponentIdx,
-        condensed_cfg_edges: &'scope SecondaryMap<
-            ComponentIdx,
-            Vec<ComponentIdx>,
-        >,
-        dependencies_left: Arc<DashMap<ComponentIdx, usize>>,
-    ) {
-        // sequential dataflow
-
-        for &dependent in condensed_cfg_edges
-            .get(starting_component)
-            .unwrap_or(&vec![])
-        {
-            let mut remaining = dependencies_left.entry(dependent).or_default();
-            if *remaining > 0 {
-                *remaining -= 1;
-                if *remaining == 0 {
-                    let dependencies_left = dependencies_left.clone();
-                    scope.spawn(move |scope| {
-                        worker(
-                            scope,
-                            dependent,
-                            condensed_cfg_edges,
-                            dependencies_left,
-                        );
-                    });
-                }
+                starting_set = frontier;
             }
         }
+
+        let dependencies_left = &dependencies_left;
+
+        self.pool.scope(move |scope| {
+            for starting_component in starting_set {
+                self.worker(scope, starting_component, dependencies_left);
+            }
+        });
     }
-
-    let condensed_cfg_edges = &condensed_cfg.edges;
-    pool.scope(move |scope| {
-        for starting_component in starting_set {
-            let mut dependencies_left = dependencies_left.clone();
-            worker(
-                scope,
-                starting_component,
-                condensed_cfg_edges,
-                dependencies_left,
-            );
-        }
-    });
-
-    todo!()
 }
