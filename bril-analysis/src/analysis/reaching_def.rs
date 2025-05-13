@@ -9,6 +9,7 @@ pub fn reaching_def(cfg: &Cfg) -> SecondaryMap<BasicBlockIdx, FixedBitSet> {
     // function parameters are not tracked
     solve_dataflow(
         cfg,
+        &(),
         Direction::Forward,
         FixedBitSet::new(),
         |mut in1, in2| {

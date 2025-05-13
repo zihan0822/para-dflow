@@ -1,10 +1,10 @@
 // Copyright (C) 2025 Zihan Li and Ethan Uppal.
 use bril::builder::BasicBlockIdx;
 use bril_cfg::Cfg;
-use slotmap::{new_key_type, SecondaryMap, SlotMap};
+use slotmap::{SecondaryMap, SlotMap, new_key_type};
 use std::collections::HashSet;
 
-new_key_type! {pub struct ComponentIdx; }
+new_key_type! { pub struct ComponentIdx; }
 
 pub struct Component {
     pub vertices: Vec<BasicBlockIdx>,
@@ -14,7 +14,7 @@ pub struct Component {
 }
 
 impl Component {
-    fn contains(&self, query: BasicBlockIdx) -> bool {
+    pub fn contains(&self, query: BasicBlockIdx) -> bool {
         self.vertices.iter().any(|idx| query.eq(idx))
     }
 }
@@ -70,7 +70,7 @@ impl<'cfg, 'program> CondensedCfg<'cfg, 'program> {
         }
 
         let mut visitor = Visitor {
-            cfg: &cfg,
+            cfg,
             val: 0,
             lowest: SecondaryMap::with_capacity(cfg.vertices.capacity()),
             preorder: SecondaryMap::with_capacity(cfg.vertices.capacity()),

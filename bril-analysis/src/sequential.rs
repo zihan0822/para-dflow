@@ -4,19 +4,25 @@ use fixedbitset::FixedBitSet;
 use std::collections::VecDeque;
 
 use bril::builder::BasicBlockIdx;
-use bril_cfg::Cfg;
 use slotmap::SecondaryMap;
 
-use crate::{construct_postorder, Direction};
+use crate::{Direction, TraverseCfgLike, construct_postorder};
 
-pub fn solve_dataflow(
-    cfg: &Cfg,
+pub fn solve_dataflow<'a, C: TraverseCfgLike<'a>>(
+    cfg_like: &C,
+    context: &C::Context,
     direction: Direction,
     entry_inputs: FixedBitSet,
     merge: impl Fn(FixedBitSet, &FixedBitSet) -> FixedBitSet,
     transfer: impl Fn(BasicBlockIdx, FixedBitSet) -> FixedBitSet,
 ) -> SecondaryMap<BasicBlockIdx, FixedBitSet> {
-    let postorder_traversal = construct_postorder(cfg, &());
+    let postorder_traversal = construct_postorder(cfg_like, context);
+    let mut solution =
+        SecondaryMap::with_capacity(cfg_like.vertices_capacity());
+    for &block_idx in &postorder_traversal {
+        solution.insert(block_idx, FixedBitSet::new());
+    }
+
     let mut blocks = match direction {
         Direction::Forward => {
             VecDeque::from_iter(postorder_traversal.into_iter().rev())
@@ -24,20 +30,16 @@ pub fn solve_dataflow(
         Direction::Backward => VecDeque::from_iter(postorder_traversal),
     };
 
-    let mut solution = SecondaryMap::with_capacity(cfg.vertices.capacity());
-    for block_idx in cfg.vertices.keys() {
-        solution.insert(block_idx, FixedBitSet::new());
-    }
     let mut initial_in = entry_inputs;
     while let Some(current) = blocks.pop_front() {
         match direction {
             Direction::Forward => {
-                for predecessor in cfg.predecessors(current) {
+                for predecessor in cfg_like.predecessors(context, current) {
                     initial_in = merge(initial_in, &solution[predecessor]);
                 }
             }
             Direction::Backward => {
-                for predecessor in cfg.successors(current) {
+                for predecessor in cfg_like.successors(context, current) {
                     initial_in = merge(initial_in, &solution[predecessor]);
                 }
             }
@@ -48,10 +50,10 @@ pub fn solve_dataflow(
             solution[current] = new_out;
             match direction {
                 Direction::Forward => {
-                    blocks.extend(cfg.successors(current));
+                    blocks.extend(cfg_like.successors(context, current));
                 }
                 Direction::Backward => {
-                    blocks.extend(cfg.predecessors(current));
+                    blocks.extend(cfg_like.predecessors(context, current));
                 }
             }
         }

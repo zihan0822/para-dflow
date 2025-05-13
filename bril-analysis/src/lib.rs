@@ -16,7 +16,7 @@ pub enum Direction {
     Backward,
 }
 
-trait TraverseCfgLike<'a> {
+pub trait TraverseCfgLike<'a> {
     type Context;
 
     fn entry(&self) -> BasicBlockIdx;
@@ -36,7 +36,7 @@ trait TraverseCfgLike<'a> {
     ) -> Vec<BasicBlockIdx>;
 }
 
-impl<'program> TraverseCfgLike<'_> for Cfg<'program> {
+impl TraverseCfgLike<'_> for Cfg<'_> {
     type Context = ();
 
     fn entry(&self) -> BasicBlockIdx {

@@ -2,7 +2,7 @@ mod liveness;
 mod reaching_def;
 mod prelude {
     pub(crate) use super::InstructionExt;
-    pub(crate) use crate::{sequential::solve_dataflow, Direction};
+    pub(crate) use crate::{Direction, sequential::solve_dataflow};
     pub(crate) use bril::builder::BasicBlockIdx;
     pub(crate) use bril_cfg::Cfg;
     pub(crate) use fixedbitset::FixedBitSet;

@@ -7,6 +7,7 @@ pub fn liveness(cfg: &Cfg) -> SecondaryMap<BasicBlockIdx, FixedBitSet> {
     let (kill_set, gen_set) = (find_kill_set(cfg), find_gen_set(cfg));
     solve_dataflow(
         cfg,
+        &(),
         Direction::Backward,
         FixedBitSet::new(),
         |mut in1, in2| {
