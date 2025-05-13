@@ -79,7 +79,12 @@ impl<'a> TraverseCfgLike<'a> for Component {
         context: &Self::Context,
         current: BasicBlockIdx,
     ) -> Vec<BasicBlockIdx> {
-        context.cfg.successors(current)
+        context
+            .cfg
+            .successors(current)
+            .into_iter()
+            .filter(|&successor| self.contains(successor))
+            .collect()
     }
 
     fn predecessors(
@@ -87,7 +92,12 @@ impl<'a> TraverseCfgLike<'a> for Component {
         context: &Self::Context,
         current: BasicBlockIdx,
     ) -> Vec<BasicBlockIdx> {
-        context.cfg.predecessors(current)
+        context
+            .cfg
+            .predecessors(current)
+            .into_iter()
+            .filter(|&predecessor| self.contains(predecessor))
+            .collect()
     }
 }
 
