@@ -15,3 +15,4 @@ bril-analysis = { path = "bril-analysis" }
 slotmap = "1.0.7"
 rayon = "1.10.0"
 fixedbitset = "0.5.7"
+dashmap = "6.1.0"

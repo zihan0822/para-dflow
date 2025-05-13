@@ -10,6 +10,7 @@ use slotmap::SecondaryMap;
 pub mod parallel;
 pub mod sequential;
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Direction {
     Forward,
     Backward,

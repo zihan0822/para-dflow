@@ -24,6 +24,7 @@ pub struct CondensedCfg<'cfg, 'program> {
     pub entry: ComponentIdx,
     pub components: SlotMap<ComponentIdx, Component>,
     pub edges: SecondaryMap<ComponentIdx, Vec<ComponentIdx>>,
+    pub rev_edges: SecondaryMap<ComponentIdx, Vec<ComponentIdx>>,
 }
 
 impl<'cfg, 'program> CondensedCfg<'cfg, 'program> {
@@ -155,12 +156,26 @@ impl<'cfg, 'program> CondensedCfg<'cfg, 'program> {
                 .collect();
             edges.insert(comp_idx, Vec::from_iter(comp_successors));
         }
+        let mut rev_edges =
+            SecondaryMap::<ComponentIdx, Vec<ComponentIdx>>::with_capacity(
+                components.len(),
+            );
+        for (source, out_edges) in &edges {
+            for destination in out_edges {
+                rev_edges
+                    .entry(*destination)
+                    .unwrap()
+                    .or_default()
+                    .push(source);
+            }
+        }
         let entry = visitor.block2comp[cfg.entry];
         Self {
             cfg,
             entry,
             components,
             edges,
+            rev_edges,
         }
     }
 }

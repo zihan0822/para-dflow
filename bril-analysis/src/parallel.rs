@@ -1,13 +1,19 @@
 // Copyright (C) 2025 Zihan Li and Ethan Uppal.
 
+use dashmap::DashMap;
 use fixedbitset::FixedBitSet;
-use std::collections::VecDeque;
+use rayon::Scope;
+use std::{collections::VecDeque, sync::Arc};
 
 use bril::builder::BasicBlockIdx;
 use bril_cfg::Cfg;
 use slotmap::SecondaryMap;
 
-use crate::{construct_postorder, scc::CondensedCfg, Direction};
+use crate::{
+    construct_postorder,
+    scc::{ComponentIdx, CondensedCfg},
+    Direction,
+};
 
 pub fn solve_dataflow(
     cfg: &Cfg,
@@ -32,6 +38,103 @@ pub fn solve_dataflow(
         .num_threads(threads)
         .build()
         .unwrap();
+
+    fn dependencies(
+        condensed_cfg: &CondensedCfg,
+        direction: Direction,
+        current: ComponentIdx,
+    ) -> Vec<ComponentIdx> {
+        match direction {
+            Direction::Forward => condensed_cfg
+                .rev_edges
+                .get(current)
+                .cloned()
+                .unwrap_or_default(),
+            Direction::Backward => condensed_cfg
+                .edges
+                .get(current)
+                .cloned()
+                .unwrap_or_default(),
+        }
+    }
+
+    let mut dependencies_left = DashMap::new();
+    for component_idx in condensed_cfg.components.keys() {
+        dependencies_left.insert(
+            component_idx,
+            dependencies(&condensed_cfg, direction, component_idx).len(),
+        );
+    }
+    let mut dependencies_left = Arc::new(dependencies_left);
+
+    let mut starting_set = vec![];
+    match direction {
+        Direction::Forward => {
+            starting_set.push(condensed_cfg.entry);
+        }
+        Direction::Backward => {
+            let mut bfs = VecDeque::from_iter([condensed_cfg.entry]);
+            let mut frontier = vec![];
+            while let Some(next) = bfs.pop_front() {
+                let neighbors =
+                    condensed_cfg.edges.get(next).cloned().unwrap_or_default();
+                if neighbors.is_empty() {
+                    frontier.push(next);
+                } else {
+                    for neighbor in neighbors {
+                        bfs.push_back(neighbor);
+                    }
+                }
+            }
+            starting_set = frontier;
+        }
+    }
+
+    // TODO: store results of dataflow per component in some DashMap
+
+    fn worker(
+        scope: Scope,
+        starting_component: ComponentIdx,
+        condensed_cfg_edges: &SecondaryMap<ComponentIdx, Vec<ComponentIdx>>,
+        dependencies_left: Arc<DashMap<ComponentIdx, usize>>,
+    ) {
+        // sequential dataflow
+
+        for dependent in condensed_cfg_edges
+            .get(starting_component)
+            .unwrap_or(&vec![])
+        {
+            let mut remaining =
+                dependencies_left.entry(*dependent).or_default();
+            if *remaining > 0 {
+                *remaining -= 1;
+                if *remaining == 0 {
+                    let dependencies_left = dependencies_left.clone();
+                    scope.spawn(move |scope| {
+                        worker(
+                            scope,
+                            *dependent,
+                            condensed_cfg_edges,
+                            dependencies_left,
+                        );
+                    });
+                }
+            }
+        }
+    }
+
+    let condensed_cfg_edges = &condensed_cfg.edges;
+    for starting_component in starting_set {
+        let mut dependencies_left = dependencies_left.clone();
+        pool.scope(move |scope| {
+            worker(
+                scope,
+                starting_component,
+                condensed_cfg_edges,
+                dependencies_left,
+            );
+        });
+    }
 
     todo!()
 }

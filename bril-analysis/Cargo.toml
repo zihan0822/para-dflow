@@ -10,3 +10,5 @@ slotmap.workspace = true
 bril-cfg.workspace = true
 fixedbitset.workspace = true
 rayon.workspace = true
+dashmap.workspace = true
+
