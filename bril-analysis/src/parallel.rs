@@ -28,7 +28,7 @@ pub fn solve_dataflow(
             .num_threads(threads)
             .build()
             .unwrap(),
-        entry_inputs: HashMap::from([(cfg.entry, entry_inputs)]),
+        entry_inputs,
         direction,
         merge,
         transfer,
@@ -46,7 +46,7 @@ where
 {
     condensed_cfg: CondensedCfg<'cfg, 'cfg>,
     pool: rayon::ThreadPool,
-    entry_inputs: HashMap<BasicBlockIdx, FixedBitSet>,
+    entry_inputs: FixedBitSet,
     direction: Direction,
     merge: M,
     transfer: T,
@@ -58,45 +58,63 @@ where
     M: Fn(FixedBitSet, &FixedBitSet) -> FixedBitSet + Sync,
     T: Fn(BasicBlockIdx, FixedBitSet) -> FixedBitSet + Sync,
 {
-    fn worker<'scope, 'a: 'scope>(
-        &'a self,
-        scope: &Scope<'scope>,
-        current: ComponentIdx,
-        dependencies_left: &'scope DashMap<ComponentIdx, usize>,
-    ) {
-        let component_entry_block =
-            self.condensed_cfg.components[current].entry;
-        let component = &self.condensed_cfg.components[current];
-        let initial_in = {
+    fn component_entry_inputs(
+        &self,
+        component_idx: ComponentIdx,
+    ) -> HashMap<BasicBlockIdx, FixedBitSet> {
+        let component = &self.condensed_cfg.components[component_idx];
+        let entries = match self.direction {
+            Direction::Forward => vec![component.entry],
+            Direction::Backward => Vec::from_iter(
+                component.vertices.iter().cloned().filter(|block| {
+                    !self
+                        .condensed_cfg
+                        .inter_comp_edges(component_idx, *block)
+                        .is_empty()
+                }),
+            ),
+        };
+        let mut entry_inputs: HashMap<BasicBlockIdx, FixedBitSet> =
+            HashMap::new();
+        for entry in entries {
             let predecessors: Vec<_> = match self.direction {
                 Direction::Forward => self
                     .condensed_cfg
                     .cfg
-                    .predecessors(component_entry_block)
+                    .predecessors(component.entry)
                     .into_iter()
                     .filter(|&pred| !component.contains(pred))
                     .collect(),
                 Direction::Backward => self
                     .condensed_cfg
                     .cfg
-                    .successors(component_entry_block)
+                    .successors(component.entry)
                     .into_iter()
                     .filter(|&succ| !component.contains(succ))
                     .collect(),
             };
-            predecessors
+            let input = predecessors
                 .iter()
                 .filter_map(|pred| self.solution.get(pred).map(|v| v.clone()))
                 .reduce(|in1, in2| (self.merge)(in1, &in2))
-                .unwrap_or(FixedBitSet::new())
-        };
+                .unwrap_or(self.entry_inputs.clone());
+            entry_inputs.insert(entry, input);
+        }
+        entry_inputs
+    }
 
+    fn worker<'scope, 'a: 'scope>(
+        &'a self,
+        scope: &Scope<'scope>,
+        current: ComponentIdx,
+        dependencies_left: &'scope DashMap<ComponentIdx, usize>,
+    ) {
         // sequential dataflow
         let partial_solution = sequential::solve_dataflow(
             &self.condensed_cfg.components[current],
             &self.condensed_cfg,
             self.direction,
-            HashMap::from([(component_entry_block, initial_in)]),
+            self.component_entry_inputs(current),
             &self.merge,
             &self.transfer,
         );
@@ -119,13 +137,6 @@ where
                 }
             }
         }
-    }
-
-    fn debug_blk(&self, block: BasicBlockIdx) {
-        eprintln!(
-            "{}",
-            self.condensed_cfg.cfg.vertices[block].label.unwrap().name
-        );
     }
 
     fn dependencies(&self, current: ComponentIdx) -> Vec<ComponentIdx> {

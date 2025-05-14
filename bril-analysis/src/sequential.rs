@@ -48,7 +48,7 @@ pub fn solve_dataflow<'a, C: TraverseCfgLike<'a>>(
             }
         }
 
-        let new_out = transfer(current, initial_in.clone());
+        let new_out = transfer(current, initial_in);
         if !new_out.eq(&solution[current]) {
             solution[current] = new_out;
             match direction {

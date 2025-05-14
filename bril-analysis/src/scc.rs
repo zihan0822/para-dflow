@@ -63,6 +63,33 @@ impl<'cfg, 'program> CondensedCfg<'cfg, 'program> {
             .collect()
     }
 
+    pub fn intra_comp_rev_edges(
+        &self,
+        comp_idx: ComponentIdx,
+        block_idx: BasicBlockIdx,
+    ) -> Vec<BasicBlockIdx> {
+        if !self.components[comp_idx].contains(block_idx) {
+            return vec![];
+        }
+        self.cfg
+            .predecessors(block_idx)
+            .into_iter()
+            .filter(|successor| self.components[comp_idx].contains(*successor))
+            .collect()
+    }
+
+    pub fn inter_comp_rev_edges(
+        &self,
+        comp_idx: ComponentIdx,
+        block_idx: BasicBlockIdx,
+    ) -> Vec<BasicBlockIdx> {
+        self.cfg
+            .predecessors(block_idx)
+            .into_iter()
+            .filter(|successor| !self.components[comp_idx].contains(*successor))
+            .collect()
+    }
+
     /// tarjan algorithm for constructing strongly connected components
     pub fn from_cfg(cfg: &'cfg Cfg<'program>) -> CondensedCfg<'cfg, 'program> {
         struct Visitor<'a, 'program> {
