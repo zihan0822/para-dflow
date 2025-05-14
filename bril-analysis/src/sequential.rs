@@ -30,13 +30,22 @@ pub fn solve_dataflow<'a, C: TraverseCfgLike<'a>>(
         Direction::Backward => VecDeque::from_iter(postorder_traversal),
     };
 
-    let mut initial_in = entry_inputs;
+    let mut initial_in = entry_inputs.clone();
+    let entry = blocks[0];
     while let Some(current) = blocks.pop_front() {
         match direction {
             Direction::Forward => {
-                for predecessor in cfg_like.predecessors(context, current) {
-                    initial_in = merge(initial_in, &solution[predecessor]);
+                let mut to_merge = vec![];
+                if current == entry {
+                    to_merge.push(entry_inputs.clone());
                 }
+                for predecessor in cfg_like.predecessors(context, current) {
+                    to_merge.push(solution[predecessor].clone());
+                }
+                initial_in = to_merge
+                    .into_iter()
+                    .reduce(|in1, in2| merge(in1, &in2))
+                    .unwrap();
             }
             Direction::Backward => {
                 for predecessor in cfg_like.successors(context, current) {
@@ -45,7 +54,7 @@ pub fn solve_dataflow<'a, C: TraverseCfgLike<'a>>(
             }
         }
 
-        let new_out = transfer(current, initial_in);
+        let new_out = transfer(current, initial_in.clone());
         if !new_out.eq(&solution[current]) {
             solution[current] = new_out;
             match direction {
@@ -58,7 +67,11 @@ pub fn solve_dataflow<'a, C: TraverseCfgLike<'a>>(
             }
         }
 
-        initial_in = FixedBitSet::new();
+        // if current == entry {
+        //     initial_in = entry_inputs.clone();
+        // } else {
+        //     initial_in = FixedBitSet::new();
+        // }
     }
     solution
 }
