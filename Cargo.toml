@@ -12,6 +12,7 @@ bril-rs = { git = "https://github.com/sampsyo/bril", rev = "175580e" }
 bril = { path = "bril" }
 bril-cfg = { path = "bril-cfg" }
 bril-analysis = { path = "bril-analysis" }
+clap = { version = "4.5.37", features = ["derive"] } 
 slotmap = "1.0.7"
 rayon = "1.10.0"
 fixedbitset = "0.5.7"
