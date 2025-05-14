@@ -29,7 +29,7 @@ pub fn reaching_def_para(
     cfg: &Cfg,
     num_threads: usize,
 ) -> DashMap<BasicBlockIdx, FixedBitSet> {
-    let (kill_set, gen_set) = (find_kill_set(cfg), find_gen_set(cfg));
+    let (kill_set, gen_set) = (find_kill_set_para(cfg), find_gen_set_para(cfg));
     // function parameters are not tracked
     parallel::solve_dataflow(
         cfg,
@@ -40,8 +40,9 @@ pub fn reaching_def_para(
             in1
         },
         |block_idx, mut merged_in| {
-            merged_in.difference_with(&kill_set[block_idx]);
-            merged_in.union_with(&gen_set[block_idx]);
+            merged_in
+                .difference_with(kill_set.get(&block_idx).as_ref().unwrap());
+            merged_in.union_with(gen_set.get(&block_idx).as_ref().unwrap());
             merged_in
         },
         num_threads,
@@ -114,5 +115,87 @@ fn find_gen_set(cfg: &Cfg) -> SecondaryMap<BasicBlockIdx, FixedBitSet> {
             ),
         );
     }
+    gen_set
+}
+
+fn find_kill_set_para(cfg: &Cfg) -> DashMap<BasicBlockIdx, FixedBitSet> {
+    let total_instr_num = cfg
+        .vertices
+        .values()
+        .map(|v| v.offset + v.instructions.len())
+        .max()
+        .unwrap_or(0);
+
+    let universe = cfg
+        .vertices
+        .values()
+        .par_bridge()
+        .map(|block| {
+            let mut partial_universe = HashMap::new();
+            for (i, instruction) in block.instructions.iter().enumerate() {
+                if let Some(dest) = instruction.dest() {
+                    partial_universe
+                        .entry(dest.0)
+                        .or_insert(FixedBitSet::with_capacity(total_instr_num))
+                        .insert(block.offset + i);
+                }
+            }
+            partial_universe
+        })
+        .reduce(HashMap::new, |mut u1, u2| {
+            for (variable, defs2) in u2 {
+                u1.entry(variable)
+                    .and_modify(|defs1| defs1.union_with(&defs2))
+                    .or_insert(defs2);
+            }
+            u1
+        });
+
+    let kill_set = DashMap::new();
+    cfg.vertices.iter().par_bridge().for_each(|(idx, block)| {
+        let mut able_to_kill = block.instructions.iter().fold(
+            FixedBitSet::with_capacity(total_instr_num),
+            |mut acc, instruction| {
+                if let Some(dest) = instruction.dest() {
+                    acc.union_with(&universe[&dest.0]);
+                }
+                acc
+            },
+        );
+        able_to_kill.remove_range(
+            block.offset..(block.offset + block.instructions.len()),
+        );
+        kill_set.insert(idx, able_to_kill);
+    });
+    kill_set
+}
+
+fn find_gen_set_para(cfg: &Cfg) -> DashMap<BasicBlockIdx, FixedBitSet> {
+    let total_instr_num = cfg
+        .vertices
+        .values()
+        .map(|v| v.offset + v.instructions.len())
+        .max()
+        .unwrap_or(0);
+
+    let gen_set = DashMap::new();
+    cfg.vertices.iter().par_bridge().for_each(|(idx, block)| {
+        let mut generated: HashMap<u32, usize> = HashMap::new();
+        for (i, instruction) in block.instructions.iter().enumerate().rev() {
+            if let Some(dest) = instruction.dest() {
+                generated.entry(dest.0).or_insert(block.offset + i);
+            }
+        }
+        gen_set.insert(
+            idx,
+            generated.into_values().fold(
+                FixedBitSet::with_capacity(total_instr_num),
+                |mut acc, offset| {
+                    acc.insert(offset);
+                    acc
+                },
+            ),
+        );
+    });
     gen_set
 }
