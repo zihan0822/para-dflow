@@ -11,4 +11,4 @@ bril-cfg.workspace = true
 fixedbitset.workspace = true
 rayon.workspace = true
 dashmap.workspace = true
-
+hibitset = "0.6.4"

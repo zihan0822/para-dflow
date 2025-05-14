@@ -37,7 +37,7 @@ fn parallel_run(bencher: Bencher) {
         .collect();
     bencher.bench_local(|| {
         for cfg in &cfgs {
-            black_box(bril_analysis::analysis::liveness_para(cfg, 4));
+            black_box(bril_analysis::analysis::liveness_para(cfg, 8));
         }
     })
 }

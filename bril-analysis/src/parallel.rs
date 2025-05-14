@@ -1,7 +1,7 @@
 // Copyright (C) 2025 Zihan Li and Ethan Uppal.
 
 use dashmap::DashMap;
-use fixedbitset::FixedBitSet;
+use hibitset::BitSet;
 use rayon::Scope;
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -17,11 +17,11 @@ use crate::{
 pub fn solve_dataflow(
     cfg: &Cfg,
     direction: Direction,
-    entry_inputs: FixedBitSet,
-    merge: impl Fn(FixedBitSet, &FixedBitSet) -> FixedBitSet + Sync,
-    transfer: impl Fn(BasicBlockIdx, FixedBitSet) -> FixedBitSet + Sync,
+    entry_inputs: BitSet,
+    merge: impl Fn(BitSet, &BitSet) -> BitSet + Sync,
+    transfer: impl Fn(BasicBlockIdx, BitSet) -> BitSet + Sync,
     threads: usize,
-) -> DashMap<BasicBlockIdx, FixedBitSet> {
+) -> DashMap<BasicBlockIdx, BitSet> {
     let solver = ParallelSolver {
         condensed_cfg: CondensedCfg::from_cfg(cfg),
         pool: rayon::ThreadPoolBuilder::new()
@@ -41,27 +41,27 @@ pub fn solve_dataflow(
 
 struct ParallelSolver<'cfg, M, T>
 where
-    M: Fn(FixedBitSet, &FixedBitSet) -> FixedBitSet + Sync,
-    T: Fn(BasicBlockIdx, FixedBitSet) -> FixedBitSet + Sync,
+    M: Fn(BitSet, &BitSet) -> BitSet + Sync,
+    T: Fn(BasicBlockIdx, BitSet) -> BitSet + Sync,
 {
     condensed_cfg: CondensedCfg<'cfg, 'cfg>,
     pool: rayon::ThreadPool,
-    entry_inputs: FixedBitSet,
+    entry_inputs: BitSet,
     direction: Direction,
     merge: M,
     transfer: T,
-    solution: DashMap<BasicBlockIdx, FixedBitSet>,
+    solution: DashMap<BasicBlockIdx, BitSet>,
 }
 
 impl<M, T> ParallelSolver<'_, M, T>
 where
-    M: Fn(FixedBitSet, &FixedBitSet) -> FixedBitSet + Sync,
-    T: Fn(BasicBlockIdx, FixedBitSet) -> FixedBitSet + Sync,
+    M: Fn(BitSet, &BitSet) -> BitSet + Sync,
+    T: Fn(BasicBlockIdx, BitSet) -> BitSet + Sync,
 {
     fn component_entry_inputs(
         &self,
         component_idx: ComponentIdx,
-    ) -> HashMap<BasicBlockIdx, FixedBitSet> {
+    ) -> HashMap<BasicBlockIdx, BitSet> {
         let component = &self.condensed_cfg.components[component_idx];
         let entries = match self.direction {
             Direction::Forward => vec![component.entry],
@@ -74,8 +74,7 @@ where
                 }),
             ),
         };
-        let mut entry_inputs: HashMap<BasicBlockIdx, FixedBitSet> =
-            HashMap::new();
+        let mut entry_inputs: HashMap<BasicBlockIdx, BitSet> = HashMap::new();
         for entry in entries {
             let predecessors: Vec<_> = match self.direction {
                 Direction::Forward => self

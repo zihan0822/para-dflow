@@ -1,6 +1,6 @@
 // Copyright (C) 2025 Zihan Li and Ethan Uppal.
 
-use fixedbitset::FixedBitSet;
+use hibitset::BitSet;
 use std::collections::{HashMap, VecDeque};
 
 use bril::builder::BasicBlockIdx;
@@ -12,15 +12,15 @@ pub fn solve_dataflow<'a, C: TraverseCfgLike<'a>>(
     cfg_like: &C,
     context: &C::Context,
     direction: Direction,
-    entry_inputs: HashMap<BasicBlockIdx, FixedBitSet>,
-    merge: impl Fn(FixedBitSet, &FixedBitSet) -> FixedBitSet,
-    transfer: impl Fn(BasicBlockIdx, FixedBitSet) -> FixedBitSet,
-) -> SecondaryMap<BasicBlockIdx, FixedBitSet> {
+    entry_inputs: HashMap<BasicBlockIdx, BitSet>,
+    merge: impl Fn(BitSet, &BitSet) -> BitSet,
+    transfer: impl Fn(BasicBlockIdx, BitSet) -> BitSet,
+) -> SecondaryMap<BasicBlockIdx, BitSet> {
     let postorder_traversal = construct_postorder(cfg_like, context);
     let mut solution =
         SecondaryMap::with_capacity(cfg_like.vertices_capacity());
     for &block_idx in &postorder_traversal {
-        solution.insert(block_idx, FixedBitSet::new());
+        solution.insert(block_idx, BitSet::new());
     }
 
     let mut blocks = match direction {
@@ -31,10 +31,8 @@ pub fn solve_dataflow<'a, C: TraverseCfgLike<'a>>(
     };
 
     while let Some(current) = blocks.pop_front() {
-        let mut initial_in = entry_inputs
-            .get(&current)
-            .cloned()
-            .unwrap_or(FixedBitSet::new());
+        let mut initial_in =
+            entry_inputs.get(&current).cloned().unwrap_or(BitSet::new());
         match direction {
             Direction::Forward => {
                 for predecessor in cfg_like.predecessors(context, current) {

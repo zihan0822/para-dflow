@@ -6,7 +6,7 @@ mod prelude {
     pub(crate) use bril::builder::BasicBlockIdx;
     pub(crate) use bril_cfg::Cfg;
     pub(crate) use dashmap::DashMap;
-    pub(crate) use fixedbitset::FixedBitSet;
+    pub(crate) use hibitset::BitSet;
     pub(crate) use rayon::prelude::*;
     pub(crate) use slotmap::SecondaryMap;
 }
