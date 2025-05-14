@@ -60,6 +60,7 @@ impl<'formatter, W: fmt::Write> Printer<'formatter, W> {
         program: &Program,
         instruction: &Instruction,
     ) -> fmt::Result {
+        write!(self.f, "  ")?;
         match instruction {
             Instruction::Add(dest, arg0, arg1) => writeln!(
                 self.f,
