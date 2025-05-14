@@ -24,7 +24,7 @@ fn prepare_bench_programs() -> Vec<bril::ir::Program> {
     programs
 }
 
-#[divan::bench]
+#[divan::bench(sample_count = 20)]
 fn parallel_run(bencher: Bencher) {
     let programs = prepare_bench_programs();
     let cfgs: Vec<_> = programs
@@ -42,7 +42,7 @@ fn parallel_run(bencher: Bencher) {
     })
 }
 
-#[divan::bench]
+#[divan::bench(sample_count = 20)]
 fn sequential_run(bencher: Bencher) {
     let programs = prepare_bench_programs();
     let cfgs: Vec<_> = programs
