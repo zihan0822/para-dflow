@@ -28,36 +28,36 @@ fn main() -> std::io::Result<()> {
         let cfg = build_cfg(&function);
         let mut para_result = SecondaryMap::new();
         let res = bril_analysis::analysis::reaching_def_para(&cfg, 1);
-        println!("parallel");
+        // println!("parallel");
 
         for entry in res.iter() {
             let block_idx = *entry.key();
             let defs = &entry.value();
-            println!(".{}", cfg.vertices[block_idx].label.unwrap().name);
-            for offset in defs.ones() {
-                let mut buf = String::new();
-                let mut pretty_printer = printer::Printer::new(&mut buf);
-                pretty_printer
-                    .print_instruction(&prog, &function.instructions[offset])
-                    .unwrap();
-                print!("{:#}", buf);
-            }
+            // println!(".{}", cfg.vertices[block_idx].label.unwrap().name);
+            // for offset in defs.ones() {
+            //     let mut buf = String::new();
+            //     let mut pretty_printer = printer::Printer::new(&mut buf);
+            //     pretty_printer
+            //         .print_instruction(&prog, &function.instructions[offset])
+            //         .unwrap();
+            //     print!("{:#}", buf);
+            // }
             para_result.insert(*entry.key(), entry.value().clone());
         }
 
-        println!("sequential");
+        // println!("sequential");
         let sequential_res = bril_analysis::analysis::reaching_def(&cfg);
-        for (block_idx, defs) in sequential_res.iter() {
-            println!(".{}", cfg.vertices[block_idx].label.unwrap().name);
-            for offset in defs.ones() {
-                let mut buf = String::new();
-                let mut pretty_printer = printer::Printer::new(&mut buf);
-                pretty_printer
-                    .print_instruction(&prog, &function.instructions[offset])
-                    .unwrap();
-                print!("{:#}", buf);
-            }
-        }
+        // for (block_idx, defs) in sequential_res.iter() {
+        //     println!(".{}", cfg.vertices[block_idx].label.unwrap().name);
+        //     for offset in defs.ones() {
+        //         let mut buf = String::new();
+        //         let mut pretty_printer = printer::Printer::new(&mut buf);
+        //         pretty_printer
+        //             .print_instruction(&prog, &function.instructions[offset])
+        //             .unwrap();
+        //         print!("{:#}", buf);
+        //     }
+        // }
 
         for (k, v) in para_result.iter() {
             if !v.eq(&sequential_res[k]) {

@@ -11,8 +11,9 @@ pub fn reaching_def(cfg: &Cfg) -> SecondaryMap<BasicBlockIdx, FixedBitSet> {
         cfg,
         &(),
         Direction::Forward,
-        FixedBitSet::new(),
+        HashMap::new(),
         |mut in1, in2| {
+            in1.grow(in2.len());
             in1.union_with(in2);
             in1
         },
@@ -48,8 +49,13 @@ pub fn reaching_def_para(
 }
 
 fn find_kill_set(cfg: &Cfg) -> SecondaryMap<BasicBlockIdx, FixedBitSet> {
-    let total_instr_num =
-        cfg.vertices.values().map(|v| v.instructions.len()).sum();
+    let total_instr_num = cfg
+        .vertices
+        .values()
+        .map(|v| v.offset + v.instructions.len())
+        .max()
+        .unwrap_or(0);
+
     let mut universe: HashMap<u32, FixedBitSet> = HashMap::new();
     for block in cfg.vertices.values() {
         for (i, instruction) in block.instructions.iter().enumerate() {
@@ -74,7 +80,7 @@ fn find_kill_set(cfg: &Cfg) -> SecondaryMap<BasicBlockIdx, FixedBitSet> {
             },
         );
         able_to_kill.remove_range(
-            block.offset..block.offset + block.instructions.len(),
+            block.offset..(block.offset + block.instructions.len()),
         );
         kill_set.insert(idx, able_to_kill);
     }
@@ -82,8 +88,12 @@ fn find_kill_set(cfg: &Cfg) -> SecondaryMap<BasicBlockIdx, FixedBitSet> {
 }
 
 fn find_gen_set(cfg: &Cfg) -> SecondaryMap<BasicBlockIdx, FixedBitSet> {
-    let total_instr_num =
-        cfg.vertices.values().map(|v| v.instructions.len()).sum();
+    let total_instr_num = cfg
+        .vertices
+        .values()
+        .map(|v| v.offset + v.instructions.len())
+        .max()
+        .unwrap_or(0);
 
     let mut gen_set = SecondaryMap::with_capacity(cfg.vertices.capacity());
     for (idx, block) in cfg.vertices.iter() {

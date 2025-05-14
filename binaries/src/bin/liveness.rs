@@ -27,7 +27,7 @@ fn main() -> std::io::Result<()> {
     for function in prog.functions() {
         let cfg = build_cfg(&function);
         let mut para_result = SecondaryMap::new();
-        let res = bril_analysis::analysis::liveness_para(&cfg, 1);
+        let res = bril_analysis::analysis::liveness_para(&cfg, 4);
         // println!("parallel");
         for entry in res.iter() {
             // println!(".{}", cfg.vertices[*entry.key()].label.unwrap().name);

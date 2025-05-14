@@ -1,5 +1,5 @@
 use super::prelude::*;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 /// ones of the returned bitset should be interpreted as the numbering of live
 /// variable variables are zero-indexed per function
@@ -9,7 +9,7 @@ pub fn liveness(cfg: &Cfg) -> SecondaryMap<BasicBlockIdx, FixedBitSet> {
         cfg,
         &(),
         Direction::Backward,
-        FixedBitSet::new(),
+        HashMap::new(),
         |mut in1, in2| {
             in1.union_with(in2);
             in1

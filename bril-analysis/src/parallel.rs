@@ -3,7 +3,7 @@
 use dashmap::DashMap;
 use fixedbitset::FixedBitSet;
 use rayon::Scope;
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use bril::builder::BasicBlockIdx;
 use bril_cfg::Cfg;
@@ -28,7 +28,7 @@ pub fn solve_dataflow(
             .num_threads(threads)
             .build()
             .unwrap(),
-        entry_inputs,
+        entry_inputs: HashMap::from([(cfg.entry, entry_inputs)]),
         direction,
         merge,
         transfer,
@@ -46,7 +46,7 @@ where
 {
     condensed_cfg: CondensedCfg<'cfg, 'cfg>,
     pool: rayon::ThreadPool,
-    entry_inputs: FixedBitSet,
+    entry_inputs: HashMap<BasicBlockIdx, FixedBitSet>,
     direction: Direction,
     merge: M,
     transfer: T,
@@ -88,7 +88,7 @@ where
                 .iter()
                 .filter_map(|pred| self.solution.get(pred).map(|v| v.clone()))
                 .reduce(|in1, in2| (self.merge)(in1, &in2))
-                .unwrap_or(self.entry_inputs.clone())
+                .unwrap_or(FixedBitSet::new())
         };
 
         // sequential dataflow
@@ -96,7 +96,7 @@ where
             &self.condensed_cfg.components[current],
             &self.condensed_cfg,
             self.direction,
-            initial_in,
+            HashMap::from([(component_entry_block, initial_in)]),
             &self.merge,
             &self.transfer,
         );
@@ -119,6 +119,13 @@ where
                 }
             }
         }
+    }
+
+    fn debug_blk(&self, block: BasicBlockIdx) {
+        eprintln!(
+            "{}",
+            self.condensed_cfg.cfg.vertices[block].label.unwrap().name
+        );
     }
 
     fn dependencies(&self, current: ComponentIdx) -> Vec<ComponentIdx> {
