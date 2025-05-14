@@ -1,12 +1,24 @@
 ## Evaluation
 
+> [!NOTE]
+> Some of these questions are redundant in the context of both sections and thus their answers will be too.
+
 **Where will you get the input code you’ll use in your evaluation?**
+
+We will use both the core benchmarks (a restriction imposed by our decision to keep a simple custom Bril representation) and generate our own CFGs through fuzzing.
 
 **How will you check the correctness of your implementation? If you’ve implemented an optimization, for example, “correctness” means that the transformed programs behave the same way as the original programs.**
 
+We will use a sequential implementation based on one we already tested for a previous CS 6120 assignment (and therefore have high confidence that it is correct).
+If the parallel result agrees with the sequential result on all inputs, we will consider our implementation "correct".
+
 **How will you measure the benefit (in performance, energy, complexity, etc.) of your implementation?**
 
+TODO
+
 **How will you present the data you collect from your empirical evaluation?**
+
+TODO
 
 ## Experience Report
 
