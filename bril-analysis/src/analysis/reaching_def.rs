@@ -40,9 +40,8 @@ pub fn reaching_def_para(
             in1
         },
         |block_idx, mut merged_in| {
-            merged_in
-                .difference_with(kill_set.get(&block_idx).as_ref().unwrap());
-            merged_in.union_with(gen_set.get(&block_idx).as_ref().unwrap());
+            merged_in.difference_with(&kill_set.get(&block_idx).unwrap());
+            merged_in.union_with(&gen_set.get(&block_idx).unwrap());
             merged_in
         },
         num_threads,
@@ -125,31 +124,17 @@ fn find_kill_set_para(cfg: &Cfg) -> DashMap<BasicBlockIdx, FixedBitSet> {
         .map(|v| v.offset + v.instructions.len())
         .max()
         .unwrap_or(0);
-
-    let universe = cfg
-        .vertices
-        .values()
-        .par_bridge()
-        .map(|block| {
-            let mut partial_universe = HashMap::new();
-            for (i, instruction) in block.instructions.iter().enumerate() {
-                if let Some(dest) = instruction.dest() {
-                    partial_universe
-                        .entry(dest.0)
-                        .or_insert(FixedBitSet::with_capacity(total_instr_num))
-                        .insert(block.offset + i);
-                }
+    let mut universe: HashMap<u32, FixedBitSet> = HashMap::new();
+    for block in cfg.vertices.values() {
+        for (i, instruction) in block.instructions.iter().enumerate() {
+            if let Some(dest) = instruction.dest() {
+                universe
+                    .entry(dest.0)
+                    .or_insert(FixedBitSet::with_capacity(total_instr_num))
+                    .insert(block.offset + i);
             }
-            partial_universe
-        })
-        .reduce(HashMap::new, |mut u1, u2| {
-            for (variable, defs2) in u2 {
-                u1.entry(variable)
-                    .and_modify(|defs1| defs1.union_with(&defs2))
-                    .or_insert(defs2);
-            }
-            u1
-        });
+        }
+    }
 
     let kill_set = DashMap::new();
     cfg.vertices.iter().par_bridge().for_each(|(idx, block)| {

@@ -36,9 +36,8 @@ pub fn liveness_para(
             in1
         },
         |block_idx, mut merged_in| {
-            merged_in
-                .difference_with(kill_set.get(&block_idx).as_ref().unwrap());
-            merged_in.union_with(gen_set.get(&block_idx).as_ref().unwrap());
+            merged_in.difference_with(&kill_set.get(&block_idx).unwrap());
+            merged_in.union_with(&gen_set.get(&block_idx).unwrap());
             merged_in
         },
         num_threads,
