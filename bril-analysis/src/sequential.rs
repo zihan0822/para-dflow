@@ -6,7 +6,7 @@ use std::collections::{HashMap, VecDeque};
 use bril::builder::BasicBlockIdx;
 use slotmap::SecondaryMap;
 
-use crate::{Direction, TraverseCfgLike, construct_postorder};
+use crate::{construct_postorder, Direction, TraverseCfgLike};
 
 pub fn solve_dataflow<'a, C: TraverseCfgLike<'a>>(
     cfg_like: &C,

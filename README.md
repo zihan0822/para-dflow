@@ -1,11 +1,7 @@
 # Parallel Dataflow Project for CS 6120
 
 Note to reader:
-Yes, the code quality is not the greatest, and we even use inconsistent module systems!
-
-...
-
-What, did you think there would be a follow-up to that sentence in accordance with its well-established, cliche phrasal context?
+Yes, the code quality is not the greatest.
 
 ## Crates
 
