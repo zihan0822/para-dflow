@@ -15,5 +15,5 @@ bril-analysis = { path = "bril-analysis" }
 clap = { version = "4.5.37", features = ["derive"] } 
 slotmap = "1.0.7"
 rayon = "1.10.0"
-fixedbitset = "0.5.7"
+fixedbitset = { rev = "254ea483e47bcd0ae519c0ee8696f29edd17a9b5", git = "https://github.com/ethanuppal/fixedbitset-fork"}
 dashmap = "6.1.0"
