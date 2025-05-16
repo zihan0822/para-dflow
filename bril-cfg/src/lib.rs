@@ -24,6 +24,7 @@ pub enum LabeledExit {
 
 #[derive(Debug, Default, Clone)]
 pub struct BasicBlock<'program> {
+    pub input_order: usize,
     pub label: Option<Label<'program>>,
     /// This includes the exit instruction if one is present (e.g., a
     /// `br` or `jmp`).
@@ -141,6 +142,7 @@ impl<'a, 'program> CfgBuilder<'a, 'program> {
         current_block.instructions =
             &self.function.instructions[self.current_range.clone()];
         current_block.offset = self.current_range.start;
+        current_block.input_order = self.input_block_order.len();
 
         let block_idx = self.cfg.vertices.insert(current_block);
         self.current_range = self.current_range.end..self.current_range.end;

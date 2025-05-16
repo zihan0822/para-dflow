@@ -49,21 +49,15 @@ pub fn reaching_def_para(
 }
 
 fn find_kill_set(cfg: &Cfg) -> SecondaryMap<BasicBlockIdx, FixedBitSet> {
-    let total_instr_num = cfg
-        .vertices
-        .values()
-        .map(|v| v.offset + v.instructions.len())
-        .max()
-        .unwrap_or(0);
-
+    let num_blocks = cfg.vertices.len();
     let mut universe: HashMap<u32, FixedBitSet> = HashMap::new();
     for block in cfg.vertices.values() {
-        for (i, instruction) in block.instructions.iter().enumerate() {
+        for instruction in block.instructions.iter() {
             if let Some(dest) = instruction.dest() {
                 universe
                     .entry(dest.0)
-                    .or_insert(FixedBitSet::with_capacity(total_instr_num))
-                    .insert(block.offset + i);
+                    .or_insert(FixedBitSet::with_capacity(num_blocks))
+                    .insert(block.input_order);
             }
         }
     }
@@ -71,7 +65,7 @@ fn find_kill_set(cfg: &Cfg) -> SecondaryMap<BasicBlockIdx, FixedBitSet> {
     let mut kill_set = SecondaryMap::with_capacity(cfg.vertices.capacity());
     for (idx, block) in cfg.vertices.iter() {
         let mut able_to_kill = block.instructions.iter().fold(
-            FixedBitSet::with_capacity(total_instr_num),
+            FixedBitSet::with_capacity(num_blocks),
             |mut acc, instruction| {
                 if let Some(dest) = instruction.dest() {
                     acc.union_with(&universe[&dest.0]);
@@ -79,34 +73,26 @@ fn find_kill_set(cfg: &Cfg) -> SecondaryMap<BasicBlockIdx, FixedBitSet> {
                 acc
             },
         );
-        able_to_kill.remove_range(
-            block.offset..(block.offset + block.instructions.len()),
-        );
+        able_to_kill.remove(block.input_order);
         kill_set.insert(idx, able_to_kill);
     }
     kill_set
 }
 
 fn find_gen_set(cfg: &Cfg) -> SecondaryMap<BasicBlockIdx, FixedBitSet> {
-    let total_instr_num = cfg
-        .vertices
-        .values()
-        .map(|v| v.offset + v.instructions.len())
-        .max()
-        .unwrap_or(0);
-
+    let num_blocks = cfg.vertices.len();
     let mut gen_set = SecondaryMap::with_capacity(cfg.vertices.capacity());
     for (idx, block) in cfg.vertices.iter() {
         let mut generated: HashMap<u32, usize> = HashMap::new();
-        for (i, instruction) in block.instructions.iter().enumerate().rev() {
+        for instruction in block.instructions.iter().rev() {
             if let Some(dest) = instruction.dest() {
-                generated.entry(dest.0).or_insert(block.offset + i);
+                generated.entry(dest.0).or_insert(block.input_order);
             }
         }
         gen_set.insert(
             idx,
             generated.into_values().fold(
-                FixedBitSet::with_capacity(total_instr_num),
+                FixedBitSet::with_capacity(num_blocks),
                 |mut acc, offset| {
                     acc.insert(offset);
                     acc
@@ -118,20 +104,15 @@ fn find_gen_set(cfg: &Cfg) -> SecondaryMap<BasicBlockIdx, FixedBitSet> {
 }
 
 fn find_kill_set_para(cfg: &Cfg) -> DashMap<BasicBlockIdx, FixedBitSet> {
-    let total_instr_num = cfg
-        .vertices
-        .values()
-        .map(|v| v.offset + v.instructions.len())
-        .max()
-        .unwrap_or(0);
+    let num_blocks = cfg.vertices.len();
     let mut universe: HashMap<u32, FixedBitSet> = HashMap::new();
     for block in cfg.vertices.values() {
-        for (i, instruction) in block.instructions.iter().enumerate() {
+        for instruction in block.instructions.iter() {
             if let Some(dest) = instruction.dest() {
                 universe
                     .entry(dest.0)
-                    .or_insert(FixedBitSet::with_capacity(total_instr_num))
-                    .insert(block.offset + i);
+                    .or_insert(FixedBitSet::with_capacity(num_blocks))
+                    .insert(block.input_order);
             }
         }
     }
@@ -139,7 +120,7 @@ fn find_kill_set_para(cfg: &Cfg) -> DashMap<BasicBlockIdx, FixedBitSet> {
     let kill_set = DashMap::new();
     cfg.vertices.iter().par_bridge().for_each(|(idx, block)| {
         let mut able_to_kill = block.instructions.iter().fold(
-            FixedBitSet::with_capacity(total_instr_num),
+            FixedBitSet::with_capacity(num_blocks),
             |mut acc, instruction| {
                 if let Some(dest) = instruction.dest() {
                     acc.union_with(&universe[&dest.0]);
@@ -147,34 +128,26 @@ fn find_kill_set_para(cfg: &Cfg) -> DashMap<BasicBlockIdx, FixedBitSet> {
                 acc
             },
         );
-        able_to_kill.remove_range(
-            block.offset..(block.offset + block.instructions.len()),
-        );
+        able_to_kill.remove(block.input_order);
         kill_set.insert(idx, able_to_kill);
     });
     kill_set
 }
 
 fn find_gen_set_para(cfg: &Cfg) -> DashMap<BasicBlockIdx, FixedBitSet> {
-    let total_instr_num = cfg
-        .vertices
-        .values()
-        .map(|v| v.offset + v.instructions.len())
-        .max()
-        .unwrap_or(0);
-
+    let num_blocks = cfg.vertices.len();
     let gen_set = DashMap::new();
     cfg.vertices.iter().par_bridge().for_each(|(idx, block)| {
         let mut generated: HashMap<u32, usize> = HashMap::new();
-        for (i, instruction) in block.instructions.iter().enumerate().rev() {
+        for instruction in block.instructions.iter().rev() {
             if let Some(dest) = instruction.dest() {
-                generated.entry(dest.0).or_insert(block.offset + i);
+                generated.entry(dest.0).or_insert(block.input_order);
             }
         }
         gen_set.insert(
             idx,
             generated.into_values().fold(
-                FixedBitSet::with_capacity(total_instr_num),
+                FixedBitSet::with_capacity(num_blocks),
                 |mut acc, offset| {
                     acc.insert(offset);
                     acc
