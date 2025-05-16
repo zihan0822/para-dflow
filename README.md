@@ -1,5 +1,12 @@
 # Parallel Dataflow Project for CS 6120
 
+Note to reader:
+Yes, the code quality is not the greatest, and we even use inconsistent module systems!
+
+...
+
+What, did you think there would be a follow-up to that sentence in accordance with its well-established, cliche phrasal context?
+
 ## Crates
 
 - [`bril`](./bril/): Flattened representation of Bril programs + shim to convert "official" Rust representation into our flattened representation
