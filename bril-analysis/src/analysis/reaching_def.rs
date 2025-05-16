@@ -1,5 +1,11 @@
+use fixedbitset::SimdBlock;
+
 use super::prelude::*;
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    mem::{self, MaybeUninit},
+    ptr::NonNull,
+};
 
 /// ones in the returned bitset should be interpreted as offset of the
 /// instruction that defines the reaching definition relative to function's
@@ -125,33 +131,66 @@ fn find_kill_set_para(cfg: &Cfg) -> DashMap<BasicBlockIdx, FixedBitSet> {
         .max()
         .unwrap_or(0);
     let mut universe: HashMap<u32, FixedBitSet> = HashMap::new();
-    for block in cfg.vertices.values() {
+
+    let (mut block_count, rem) = (
+        total_instr_num / SimdBlock::BITS,
+        total_instr_num % SimdBlock::BITS,
+    );
+    block_count += (rem > 0) as usize;
+    let arena_size = block_count * cfg.vertices.len() * 2;
+    let arena: Box<[SimdBlock]> =
+        vec![SimdBlock::NONE; arena_size].into_boxed_slice();
+
+    for (id, block) in cfg.vertices.values().enumerate() {
         for (i, instruction) in block.instructions.iter().enumerate() {
             if let Some(dest) = instruction.dest() {
                 universe
                     .entry(dest.0)
-                    .or_insert(FixedBitSet::with_capacity(total_instr_num))
+                    .or_insert(unsafe {
+                        let segment = arena.as_ptr().add(block_count * id)
+                            as *mut MaybeUninit<SimdBlock>;
+                        std::ptr::write_bytes(segment, 0, block_count);
+                        let start = NonNull::new_unchecked(segment);
+                        let a = FixedBitSet::stupid(total_instr_num, start);
+                        assert!(a.is_clear(), "{a}");
+                        a
+                    })
                     .insert(block.offset + i);
             }
         }
     }
 
     let kill_set = DashMap::new();
-    cfg.vertices.iter().par_bridge().for_each(|(idx, block)| {
-        let mut able_to_kill = block.instructions.iter().fold(
-            FixedBitSet::with_capacity(total_instr_num),
-            |mut acc, instruction| {
-                if let Some(dest) = instruction.dest() {
-                    acc.union_with(&universe[&dest.0]);
-                }
-                acc
-            },
-        );
-        able_to_kill.remove_range(
-            block.offset..(block.offset + block.instructions.len()),
-        );
-        kill_set.insert(idx, able_to_kill);
-    });
+    cfg.vertices.iter().enumerate().par_bridge().for_each(
+        |(id, (idx, block))| {
+            let mut able_to_kill = block.instructions.iter().fold(
+                unsafe {
+                    let segment = arena
+                        .as_ptr()
+                        .add(block_count * (cfg.vertices.len() + id))
+                        as *mut MaybeUninit<SimdBlock>;
+                    std::ptr::write_bytes(segment, 0, block_count);
+                    let start = NonNull::new_unchecked(segment);
+                    let a = FixedBitSet::stupid(total_instr_num, start);
+                    assert!(a.is_clear());
+                    a
+                },
+                |mut acc, instruction| {
+                    if let Some(dest) = instruction.dest() {
+                        acc.union_with(&universe[&dest.0]);
+                    }
+                    acc
+                },
+            );
+            able_to_kill.remove_range(
+                block.offset..(block.offset + block.instructions.len()),
+            );
+            kill_set.insert(idx, able_to_kill);
+        },
+    );
+
+    mem::forget(arena);
+
     kill_set
 }
 

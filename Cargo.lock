@@ -270,8 +270,7 @@ dependencies = [
 [[package]]
 name = "fixedbitset"
 version = "0.5.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d674e81391d1e1ab681a28d99df07927c6d4aa5b027d7da16ba32d1d21ecd99"
+source = "git+https://github.com/ethanuppal/fixedbitset-fork?rev=254ea483e47bcd0ae519c0ee8696f29edd17a9b5#254ea483e47bcd0ae519c0ee8696f29edd17a9b5"
 
 [[package]]
 name = "getrandom"
