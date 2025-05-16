@@ -118,17 +118,19 @@ fn find_kill_set_para(cfg: &Cfg) -> DashMap<BasicBlockIdx, FixedBitSet> {
         total_instr_num % SimdBlock::BITS,
     );
     block_count += (rem > 0) as usize;
-    let arena_size = block_count * cfg.vertices.len() * 2;
+    let arena_size = block_count * (total_instr_num + cfg.vertices.len());
     let arena: Box<[SimdBlock]> =
         vec![SimdBlock::NONE; arena_size].into_boxed_slice();
 
-    for (id, block) in cfg.vertices.values().enumerate() {
+    for block in cfg.vertices.values() {
         for (i, instruction) in block.instructions.iter().enumerate() {
             if let Some(dest) = instruction.dest() {
                 universe
                     .entry(dest.0)
                     .or_insert(unsafe {
-                        let segment = arena.as_ptr().add(block_count * id)
+                        let segment = arena
+                            .as_ptr()
+                            .add(block_count * (block.offset + i))
                             as *mut MaybeUninit<SimdBlock>;
                         std::ptr::write_bytes(segment, 0, block_count);
                         let start = NonNull::new_unchecked(segment);
@@ -148,7 +150,7 @@ fn find_kill_set_para(cfg: &Cfg) -> DashMap<BasicBlockIdx, FixedBitSet> {
                 unsafe {
                     let segment = arena
                         .as_ptr()
-                        .add(block_count * (cfg.vertices.len() + id))
+                        .add(block_count * (total_instr_num + id))
                         as *mut MaybeUninit<SimdBlock>;
                     std::ptr::write_bytes(segment, 0, block_count);
                     let start = NonNull::new_unchecked(segment);
